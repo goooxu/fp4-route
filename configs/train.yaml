@@ -1,0 +1,37 @@
+seed: 42
+# Borrow architecture + tokenizer from this HF model; never load its weights.
+arch_model_id: HuggingFaceTB/SmolLM2-360M
+tokenizer_id: HuggingFaceTB/SmolLM2-360M
+
+data:
+  dataset: Salesforce/wikitext
+  dataset_config: wikitext-2-raw-v1
+  seq_len: 512
+
+train:
+  max_steps: 3000
+  batch_size: 8
+  grad_accum: 4
+  lr: 3.0e-4
+  min_lr: 3.0e-5
+  warmup_steps: 200
+  weight_decay: 0.1
+  max_grad_norm: 1.0
+  log_every: 100
+  bf16: true
+
+eval:
+  stride: 256
+  max_eval_tokens: null
+  gen_prompt: "The history of artificial intelligence began"
+  gen_max_new_tokens: 64
+
+paths:
+  root: .
+  hf_cache: hf_cache
+  data_dir: data
+  init_model: checkpoints/init_model
+  ckpt_bf16: checkpoints/ckpt_bf16
+  ckpt_bf16_mxfp4_ptq: checkpoints/ckpt_bf16_mxfp4_ptq
+  ckpt_mxfp4: checkpoints/ckpt_mxfp4
+  results: results

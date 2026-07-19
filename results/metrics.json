@@ -1,0 +1,23 @@
+[
+  {
+    "route": "R1",
+    "train_dtype": "bf16",
+    "infer_dtype": "fp16",
+    "ppl": 720.2549072776216,
+    "train_loss_final": 0.0965392703935504
+  },
+  {
+    "route": "R2",
+    "train_dtype": "bf16+ptq",
+    "infer_dtype": "mxfp4_ptq(W4A4),linears=225",
+    "ppl": 697.8340257186453,
+    "train_loss_final": 0.0965392703935504
+  },
+  {
+    "route": "R3",
+    "train_dtype": "mxfp4_fq",
+    "infer_dtype": "mxfp4_fq(W4A4),linears=225,marker=fq_train",
+    "ppl": 681.0869940615404,
+    "train_loss_final": 0.48197511486709116
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "model_id": "HuggingFaceTB/SmolLM2-360M",
+  "note": "Official pretrained weights (not our from-scratch training)",
+  "wikitext2_ppl_fp16": 18.98256727026862,
+  "wikitext2_ppl_mxfp4_ptq": 84.3860480241469,
+  "num_linears_ptq": 225
+}
