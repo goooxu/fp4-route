@@ -16,18 +16,40 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def load_cfg(path: str | Path | None = None) -> dict:
+def load_cfg(path: str | Path | None = None, seed: int | None = None) -> dict:
     root = project_root()
     cfg_path = Path(path) if path else root / "configs" / "train.yaml"
     with open(cfg_path) as f:
         cfg = yaml.safe_load(f)
+    if seed is not None:
+        cfg["seed"] = int(seed)
     # Resolve relative paths against project root unless absolute
     cfg["_root"] = root
+    cfg["_config_path"] = str(cfg_path.resolve())
     paths = cfg.setdefault("paths", {})
     for k, v in list(paths.items()):
         p = Path(v)
         if not p.is_absolute():
             paths[k] = str((root / p).resolve())
+    # Per-seed checkpoint isolation when seed overridden via multi-run
+    seed_tag = cfg.get("paths_seed_subdir")
+    if seed_tag or cfg.get("isolate_seed_paths"):
+        s = cfg["seed"]
+        for key in (
+            "init_model",
+            "ckpt_bf16",
+            "ckpt_bf16_mxfp4_ptq",
+            "ckpt_mxfp4",
+            "results",
+        ):
+            if key in paths:
+                base = Path(paths[key])
+                # results/seed_42, checkpoints/seed_42/...
+                if key == "results":
+                    paths[key] = str((base / f"seed_{s}").resolve())
+                else:
+                    # checkpoints/ckpt_bf16 -> checkpoints/seed_42/ckpt_bf16
+                    paths[key] = str((base.parent / f"seed_{s}" / base.name).resolve())
     return cfg
 
 

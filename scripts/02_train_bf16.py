@@ -19,15 +19,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=None)
     ap.add_argument("--max_steps", type=int, default=None)
+    ap.add_argument("--seed", type=int, default=None)
     args = ap.parse_args()
-    cfg = load_cfg(args.config)
+    cfg = load_cfg(args.config, seed=args.seed)
     hf_env(cfg)
     set_seed(cfg["seed"])
 
     init_dir = cfg["paths"]["init_model"]
     print(f"[bf16] Loading shared init from {init_dir}")
     model = AutoModelForCausalLM.from_pretrained(init_dir)
-    # Loads OUR randomly initialized checkpoint, not public pretrained weights.
     train_loop(
         model,
         cfg,

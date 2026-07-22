@@ -12,14 +12,19 @@ __pycache__/
 *~
 .DS_Store
 
-# Caches & bulky run artifacts (keep results/ metrics)
+# Caches & bulky run artifacts (code-only repo; metrics live in EXPERIMENT_SUMMARY.md)
 hf_cache/
 uv_cache/
 data/
 checkpoints/
+artifact_backup/
+results/
+logs/
 *.pt
 *.bin
 *.safetensors
+*.npy
+*.npy.tmp
 
 # Local env / NFS leftovers
 .env

@@ -19,8 +19,9 @@ from mxfp4_lib.util import ensure_dir, hf_env, load_cfg, set_seed
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=None)
+    ap.add_argument("--seed", type=int, default=None)
     args = ap.parse_args()
-    cfg = load_cfg(args.config)
+    cfg = load_cfg(args.config, seed=args.seed)
     hf_env(cfg)
     set_seed(cfg["seed"])
 
@@ -43,6 +44,7 @@ def main():
         "arch_model_id": arch_id,
         "num_parameters": n,
         "vocab_size": len(tok),
+        "tie_word_embeddings": getattr(model_cfg, "tie_word_embeddings", None),
         "note": (
             "Open-source architecture via AutoConfig.from_pretrained; "
             "weights via AutoModelForCausalLM.from_config (random). "
@@ -55,6 +57,10 @@ def main():
         "num_attention_heads": getattr(model_cfg, "num_attention_heads", None),
     }
     with open(Path(out) / "init_meta.json", "w") as f:
+        json.dump(meta, f, indent=2)
+    # Also mirror into results for convenience
+    res = ensure_dir(cfg["paths"]["results"])
+    with open(Path(res) / "init_meta.json", "w") as f:
         json.dump(meta, f, indent=2)
     print(f"[init] Saved random init model to {out} ({n/1e6:.2f}M params)")
 

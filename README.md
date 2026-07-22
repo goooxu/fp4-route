@@ -1,40 +1,79 @@
 # fp4-route
 
-Compare three train / infer routes for **full-model MXFP4 (W4A4 semantics)** on a causal LM.
+Compare three train / infer routes for **full-model MXFP4 (W4A4 semantics on transformer-block Linears)** on a causal LM.
 
 | Route | Train | Infer |
 |-------|-------|-------|
-| R1 | From-scratch BF16 | FP16 |
-| R2 | Same BF16 ckpt as R1 → full-model PTQ | MXFP4 (static weight PTQ + dynamic activation quant) |
-| R3 | From-scratch MXFP4 fake-quant (STE) | MXFP4 |
+| R1 | From-scratch BF16 | FP16 (true fp16 forward, no bf16 autocast) |
+| R2 | Same BF16 ckpt → PTQ on **block Linears only** | MXFP4 W4A4 (embed + lm_head stay BF16/FP16) |
+| R3 | From-scratch MXFP4 fake-quant (blocks) | MXFP4 W4A4 |
 
-Default setup borrows the **architecture** of [`HuggingFaceTB/SmolLM2-360M`](https://huggingface.co/HuggingFaceTB/SmolLM2-360M) via `from_config` (**random weights**; no pretrained tensors). Metric: WikiText-2 sliding-window perplexity.
+**Quant scope (default):** industrial standard — keep `embed_tokens` + `lm_head` in high precision; quantize transformer-block `nn.Linear` only (~224 on SmolLM2-360M). Optional ablation unties `lm_head` and quantizes it too.
 
-MXFP4 here follows an OCP-style layout (E2M1 + group=32 + E8M0 scale) implemented in PyTorch fake-quant — not Transformer Engine hardware MXFP4 GEMM.
+Default setup borrows architecture of [`HuggingFaceTB/SmolLM2-360M`](https://huggingface.co/HuggingFaceTB/SmolLM2-360M) via `from_config` (random weights). Training data: **FineWeb-Edu** (`sample-10BT`). Eval: **WikiText-2** PPL only.
+
+MXFP4: OCP-style E2M1 + group=32 + E8M0 scale (`scale_mode=rtn` default). PyTorch fake-quant — not Transformer Engine hardware MXFP4 GEMM.
+
+**Scope of this repo:** inference **quality** (PPL). Throughput / latency are out of scope.
 
 ## Quick start
 
 ```bash
-# Setup (venv + deps; prefers CUDA wheels when available)
 bash scripts/00_setup_remote.sh
 source venv/bin/activate
 
-# Full pipeline: data → init → BF16 train → MXFP4 FQ train → PTQ → eval
-bash scripts/06_run_all.sh
+# 135M smoke (~200M FineWeb tokens)
+bash scripts/run_smoke_135m.sh
+
+# 360M mainline × seeds 42/43 (DDP)
+NPROC=4 bash scripts/run_main_360m.sh
+
+# Pretrained baseline + ablations + QAT-from-pretrained
+bash scripts/run_p2_p3.sh
 ```
 
-Config: `configs/train.yaml`. Results land in `results/`.
+Configs: `configs/smoke_135m.yaml`, `configs/main_360m.yaml`.
 
 ## Layout
 
 ```
-configs/          # train / eval hyperparams
-mxfp4_lib/        # MXFP4 quant, Linear, replace, train loop
-scripts/          # prepare → train → PTQ → eval
-results/          # PPL metrics, train logs, summary
-EXPERIMENT_SUMMARY.md
+configs/          # smoke / main hyperparams
+mxfp4_lib/        # quant, Linear, replace, data, train loop, asserts
+scripts/          # prepare → train → PTQ → eval → ablations
+tests/            # quant + tie-scope unit tests
+EXPERIMENT_SUMMARY.md   # conclusions + retained dataset paths
+data/             # local FineWeb/WikiText caches (gitignored; see SUMMARY)
 ```
 
-## Hardware note
+Run artifacts (`results/`, `checkpoints/`) are gitignored; copy key numbers into `EXPERIMENT_SUMMARY.md`.
 
-Experiments in this repo were run on NVIDIA **Blackwell (GB200, SM 10.0)**. The code is standard PyTorch CUDA and should run on other GPUs with enough memory (adjust batch size / model size in the config as needed).
+## Checkpoints & machine migration
+
+Training writes resumable state under each ckpt dir:
+
+```
+checkpoints/.../resume/
+  train_state.pt      # step + optimizer + rng
+  model_state.pt      # weights
+  checkpoint_meta.json
+  tokenizer/
+```
+
+- `train.save_every` (default 1000 on mainline) — periodic save
+- `train.resume: true` — auto-continue from `resume/`
+- SIGTERM/SIGINT — one more checkpoint then exit (for node reclaim)
+
+**Backup / restore when the test machine changes** (pass host via env, never commit IPs):
+
+```bash
+# On durable machine / laptop
+REMOTE=user@host REMOTE_DIR=/tmp/fp4_route \
+  bash scripts/sync_artifacts.sh pull
+
+# After new node is up
+REMOTE=user@newhost REMOTE_DIR=/tmp/fp4_route \
+  bash scripts/sync_artifacts.sh push
+# then on the new node:
+bash scripts/00_setup_remote.sh
+NPROC=4 bash scripts/resume_main.sh configs/main_360m.yaml 42
+```

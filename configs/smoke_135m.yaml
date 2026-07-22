@@ -1,9 +1,9 @@
-# Legacy / default points at main_360m settings without seed isolation
+# Smoke: SmolLM2-135M arch, FineWeb-Edu ~200M tokens, WikiText-2 eval
 seed: 42
 isolate_seed_paths: false
 
-arch_model_id: HuggingFaceTB/SmolLM2-360M
-tokenizer_id: HuggingFaceTB/SmolLM2-360M
+arch_model_id: HuggingFaceTB/SmolLM2-135M
+tokenizer_id: HuggingFaceTB/SmolLM2-135M
 
 data:
   train_dataset: HuggingFaceFW/fineweb-edu
@@ -12,22 +12,22 @@ data:
   eval_dataset: Salesforce/wikitext
   eval_dataset_config: wikitext-2-raw-v1
   seq_len: 512
-  prefetch_fineweb: false
+  prefetch_fineweb: true
   stream_shuffle_buffer: 10000
   tokenize_flush_docs: 256
 
 train:
-  target_tokens: 7000000000
-  max_steps: 500000
+  target_tokens: 200000000   # ~200M smoke
+  max_steps: 100000          # fallback if target_tokens unused
   batch_size: 8
   grad_accum: 4
   lr: 3.0e-4
   min_lr: 3.0e-5
-  warmup_steps: 2000
+  warmup_steps: 200
   weight_decay: 0.1
   max_grad_norm: 1.0
-  log_every: 100
-  save_every: 1000
+  log_every: 50
+  save_every: 500            # mid-run resume checkpoints
   resume: true
   bf16: true
   num_workers: 2
@@ -35,17 +35,14 @@ train:
 eval:
   stride: 256
   max_eval_tokens: null
-  val_tokens: 1000000
-  val_every_steps: 1000
+  val_tokens: 1000000        # 1M FineWeb val
+  val_every_steps: 200
   gen_prompt: "The history of artificial intelligence began"
   gen_max_new_tokens: 64
 
 quant:
   scale_mode: rtn
   include_lm_head: false
-
-qat_steps: 500
-qat_lr: 1.0e-5
 
 paths:
   root: .
@@ -55,4 +52,4 @@ paths:
   ckpt_bf16: checkpoints/ckpt_bf16
   ckpt_bf16_mxfp4_ptq: checkpoints/ckpt_bf16_mxfp4_ptq
   ckpt_mxfp4: checkpoints/ckpt_mxfp4
-  results: results
+  results: results/smoke_135m

@@ -1,6 +1,6 @@
-# Legacy / default points at main_360m settings without seed isolation
+# Mainline: SmolLM2-360M arch, FineWeb-Edu ~7B tokens, dual seed via --seed + isolate
 seed: 42
-isolate_seed_paths: false
+isolate_seed_paths: true
 
 arch_model_id: HuggingFaceTB/SmolLM2-360M
 tokenizer_id: HuggingFaceTB/SmolLM2-360M
@@ -12,12 +12,12 @@ data:
   eval_dataset: Salesforce/wikitext
   eval_dataset_config: wikitext-2-raw-v1
   seq_len: 512
-  prefetch_fineweb: false
+  prefetch_fineweb: true
   stream_shuffle_buffer: 10000
   tokenize_flush_docs: 256
 
 train:
-  target_tokens: 7000000000
+  target_tokens: 7000000000  # ~7B ≈ 20 tok/param
   max_steps: 500000
   batch_size: 8
   grad_accum: 4
@@ -27,7 +27,7 @@ train:
   weight_decay: 0.1
   max_grad_norm: 1.0
   log_every: 100
-  save_every: 1000
+  save_every: 1000           # mid-run resume checkpoints (machine may change)
   resume: true
   bf16: true
   num_workers: 2
@@ -44,6 +44,7 @@ quant:
   scale_mode: rtn
   include_lm_head: false
 
+# Short QAT-from-pretrained (R3')
 qat_steps: 500
 qat_lr: 1.0e-5
 
@@ -55,4 +56,4 @@ paths:
   ckpt_bf16: checkpoints/ckpt_bf16
   ckpt_bf16_mxfp4_ptq: checkpoints/ckpt_bf16_mxfp4_ptq
   ckpt_mxfp4: checkpoints/ckpt_mxfp4
-  results: results
+  results: results/main_360m
