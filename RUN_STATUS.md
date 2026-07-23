@@ -42,25 +42,32 @@ Same eval recipe as seed42 (WikiText-2, seq 512, stride 256, `scale_mode=rtn`, b
 | Official pretrained | 18.97 | 51.01 (PTQ) |
 | From-scratch seed42 | 52.37 (R1) | 67.24 (R2) / 53.73 (R3) |
 
-## Perf track (throughput) — DONE in NGC docker (2026-07-22)
+## Perf track (throughput) — max-batch + 4×DDP (2026-07-22)
 
-Dual-track: quality = software PPL (above); perf = tokens/s.  
-**Image:** `nvcr.io/nvidia/pytorch:26.06-py3` (TE 2.16, NVFP4 OK).
+**Image:** `nvcr.io/nvidia/pytorch:26.06-py3` · GB200 · seq=512 · TE NVFP4
 
-| Backend | Phase | batch | tok/s | vs bf16 |
-|---------|-------|------:|------:|--------:|
-| bf16 | train | 64 | **162460** | 1.00× |
-| bf16 | infer | 64 | **510948** | 1.00× |
-| sw_fq | train | 64 | **44804** | 0.28× |
-| sw_fq | infer | 32 | **54176** | — |
-| **te_nvfp4** | train | 64 | **132329** | 0.81× |
-| **te_nvfp4** | infer | 64 | **351598** | 0.69× |
+### 1×GPU best (batch sweep to ~full HBM)
+
+| Backend | Phase | bs | tok/s | mem |
+|---------|-------|---:|------:|----:|
+| bf16 | train | 192 | **173578** | 177G |
+| bf16 | infer | 192 | **532828** | 131G |
+| sw_fq | train | 160 | **47571** | 167G |
+| sw_fq | infer | 48 | **55518** | 151G |
+| te_nvfp4 | train | 192 | **156443** | 165G |
+| te_nvfp4 | infer | 192 | **445168** | 119G |
+
+### 4×GPU DDP train (best)
+
+| Backend | bs/gpu | global | tok/s | vs bf16 |
+|---------|-------:|-------:|------:|--------:|
+| bf16 | 128 | 512 | **669799** | 1.00× |
+| sw_fq | 128 | 512 | **185992** | 0.28× |
+| te_nvfp4 | 112 | 448 | **587034** | 0.88× |
 
 ```bash
 # On GPU node:
-IMG=nvcr.io/nvidia/pytorch:26.06-py3 bash scripts/run_bench_docker.sh
-# From login:
-REMOTE_HOST=<gpu-ip> bash scripts/run_bench_docker.sh --remote
+IMG=nvcr.io/nvidia/pytorch:26.06-py3 NPROC=4 bash scripts/run_bench_max_ddp.sh
 ```
 
 ## Seed 43 — NOT STARTED

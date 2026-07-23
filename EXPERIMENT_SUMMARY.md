@@ -124,28 +124,47 @@
 **运行环境：** `nvcr.io/nvidia/pytorch:26.06-py3`（torch 2.13 / TE 2.16 / CUDA 13.3）。  
 脚本：`scripts/run_bench_docker.sh` → `12_bench_throughput.py`；JSON 在 `results/perf/`（gitignored）。
 
-| Backend | Phase | batch | tokens/s | ms/step | peak mem | 含义 |
-|---------|-------|------:|---------:|--------:|---------:|------|
-| **bf16** | train | 64 | **162460** | 202 | 60 GB | R1 训练参考 |
-| **bf16** | infer | 64 | **510948** | 64 | 44 GB | R1 推理参考 |
-| **sw_fq** | train | 64 | **44804** | 731 | 69 GB | 软件 MXFP4 FQ（质量轨 R3 实现） |
-| **sw_fq** | infer | 32 | **54176** | 302 | 103 GB | 同上；bs64 OOM |
-| **te_nvfp4** | train | 64 | **132329** | 248 | 57 GB | TE `NVFP4BlockScaling`，224 block Linear |
-| **te_nvfp4** | infer | 64 | **351598** | 93 | 40 GB | 硬件 NVFP4 推理 |
+#### 3.5.0 固定 batch=64（初测）
 
-相对 bf16 的吞吐比（同 phase）：
+| Backend | Phase | batch | tokens/s | peak mem |
+|---------|-------|------:|---------:|---------:|
+| bf16 | train | 64 | 162460 | 60 GB |
+| bf16 | infer | 64 | 510948 | 44 GB |
+| sw_fq | train | 64 | 44804 | 69 GB |
+| sw_fq | infer | 32 | 54176 | 103 GB |
+| te_nvfp4 | train | 64 | 132329 | 57 GB |
+| te_nvfp4 | infer | 64 | 351598 | 40 GB |
 
-| Backend | train | infer |
-|---------|------:|------:|
-| sw_fq | **0.28×** | **0.11×**（bs32） |
-| te_nvfp4 | **0.81×** | **0.69×** |
+#### 3.5.0b **打满显存 batch sweep（1×GPU，best tok/s）**
+
+扫到接近 OOM；记录吞吐最高点。GB200 ~189GB。
+
+| Backend | Phase | best bs/gpu | tokens/s | peak mem | vs bf16 |
+|---------|-------|------------:|---------:|---------:|--------:|
+| **bf16** | train | **192** | **173578** | 177 GB | 1.00× |
+| **bf16** | infer | **192** | **532828** | 131 GB | 1.00× |
+| **sw_fq** | train | **160** | **47571** | 167 GB | **0.27×** |
+| **sw_fq** | infer | **48** | **55518** | 151 GB | **0.10×** |
+| **te_nvfp4** | train | **192** | **156443** | 165 GB | **0.90×** |
+| **te_nvfp4** | infer | **192** | **445168** | 119 GB | **0.84×** |
+
+打满后 te_nvfp4 训练逼近 bf16（0.90×）；sw_fq 仍约 0.27×。
+
+#### 3.5.0c **4×GPU DDP train（per-GPU batch sweep，best tok/s）**
+
+| Backend | per-gpu bs | global bs | tokens/s | peak/GPU | vs bf16 | 相对 1GPU 同 backend |
+|---------|----------:|----------:|---------:|---------:|--------:|---------------------:|
+| **bf16** | 128 | 512 | **669799** | 120 GB | 1.00× | ~3.9× |
+| **sw_fq** | 128 | 512 | **185992** | 136 GB | **0.28×** | ~3.9× |
+| **te_nvfp4** | **112** | 448 | **587034** | 99 GB | **0.88×** | ~3.8× |
 
 解读：
 
-1. **软件 FQ 远慢于 BF16**（训练 ~1/4）：quant-dequant + 高精度 `F.linear`，不能代表硬件 MXFP4。  
-2. **TE NVFP4 在 360M 微基准上尚未超过 BF16**（训练 0.81×、推理 0.69×）：路径已走 Tensor Core FP4 GEMM，但 360M + 当前 batch 下量化/cast 开销仍明显；更大模型或 batch 扫描后才可能反超。  
-3. 标签 **`te_nvfp4` ≠ 软件 OCP MXFP4**（E2M1 group32 E8M0）；质量 PPL 仍以软件轨为准。  
-4. 主机裸 venv **不要**装 TE；统一用 NGC 镜像（见 `run_bench_docker.sh`）。
+1. **软件 FQ** 无论 1 卡打满还是 4 卡 DDP，吞吐仍只有 BF16 的 ~27–28%。  
+2. **TE NVFP4** 打满后 1 卡 **0.90× BF16**、4 卡 **0.88×**；360M 上仍未稳定超过 BF16，但已是真 FP4 GEMM 路径。  
+3. 4 卡扩展性三者均约 **3.8–3.9×**（接近线性）。  
+4. 标签 **`te_nvfp4` ≠ 软件 OCP MXFP4**；质量 PPL 仍以软件轨为准。  
+5. 统一用 NGC 镜像：`scripts/run_bench_max_ddp.sh` / `run_bench_docker.sh`。
 
 #### 3.5.1 硬件 FP4 / TE 状态（已解锁）
 
