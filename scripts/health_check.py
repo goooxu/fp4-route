@@ -55,11 +55,11 @@ def main():
     probe = (
         "hostname; "
         "nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader | head -8; "
-        "pgrep -af '02_train_bf16|03_train_mxfp4|04_ptq|05_eval|torchrun' | grep -v pgrep | head -12; "
+        "pgrep -af '02_train_bf16|03_train_nvfp4|05_eval|torchrun' | grep -v pgrep | head -12; "
         "echo META_BF16; "
         "cat {root}/checkpoints/seed_{seed}/ckpt_bf16/resume/checkpoint_meta.json 2>/dev/null || echo none; "
         "echo META_MXFP4; "
-        "cat {root}/checkpoints/seed_{seed}/ckpt_mxfp4/resume/checkpoint_meta.json 2>/dev/null || echo none; "
+        "cat {root}/checkpoints/seed_{seed}/ckpt_nvfp4/resume/checkpoint_meta.json 2>/dev/null || echo none; "
         "echo LOG; "
         "ls -t {root}/logs/main_seed{seed}_*.log 2>/dev/null | head -1 | xargs -r tail -n 8"
     ).format(root=ROOT, seed=args.seed)
@@ -78,7 +78,7 @@ def main():
     # Match real worker/launcher PIDs, not the parent bash -c that embeds stage names
     training = bool(
         re.search(
-            r"(?:python3?|torchrun).*(?:02_train_bf16|03_train_mxfp4|04_ptq|05_eval)",
+            r"(?:python3?|torchrun).*(?:02_train_bf16|03_train_nvfp4|05_eval)",
             out,
         )
     )

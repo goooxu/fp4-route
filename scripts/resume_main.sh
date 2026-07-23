@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Resume mainline on a (possibly new) machine after artifact sync.
-# Expects FineWeb caches + code already present under project root.
+# Resume mainline (BF16 + TE NVFP4) after artifact sync.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 NPROC="${NPROC:-4}"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3}"
-# shellcheck disable=SC1091
-source "$ROOT/venv/bin/activate"
+if [[ -f "$ROOT/venv/bin/activate" ]]; then
+  # shellcheck disable=SC1091
+  source "$ROOT/venv/bin/activate"
+fi
 
 CFG="${1:-configs/main_360m.yaml}"
 SEED="${2:-}"
@@ -18,14 +19,12 @@ if [[ -n "$SEED" ]]; then
 fi
 
 echo "[resume] config=$CFG seed=${SEED:-cfg} nproc=$NPROC"
-# Skip prepare if token cache exists; still ensure tokenizer/wikitext
 if [[ ! -d data/wikitext2 ]]; then
   python scripts/01_prepare_data.py --config "$CFG" "${SEED_ARGS[@]}"
 else
   echo "[resume] data/wikitext2 present — skip full prepare"
 fi
 
-# Init only if missing
 INIT=$(python - <<PY
 import sys
 sys.path.insert(0, ".")
@@ -48,13 +47,12 @@ run_py() {
   fi
 }
 
-echo "[resume] BF16 (will auto-resume from checkpoints/*/resume if present)"
+echo "[resume] BF16"
 run_py scripts/02_train_bf16.py --config "$CFG" "${SEED_ARGS[@]}"
 
-echo "[resume] MXFP4 FQ"
-run_py scripts/03_train_mxfp4.py --config "$CFG" "${SEED_ARGS[@]}"
+echo "[resume] TE NVFP4"
+run_py scripts/03_train_nvfp4.py --config "$CFG" "${SEED_ARGS[@]}"
 
-echo "[resume] PTQ + eval"
-python scripts/04_ptq_mxfp4.py --config "$CFG" "${SEED_ARGS[@]}"
+echo "[resume] eval PPL"
 python scripts/05_eval_ppl.py --config "$CFG" "${SEED_ARGS[@]}"
 echo "[resume] DONE"

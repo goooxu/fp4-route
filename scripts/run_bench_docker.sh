@@ -61,10 +61,9 @@ cp -f /tmp/capability.json /out/results/perf/capability.json 2>/dev/null || true
 cp -f /out/results/perf/capability.json /out/results/perf/capability.json 2>/dev/null || true
 # probe writes under paths.results if writable
 ls -la /out/results/perf/ || true
-for backend in bf16 sw_fq te_fp4; do
+for backend in bf16 te_fp4; do
   for phase in train infer; do
     bs=64
-    if [[ "$backend" == "sw_fq" && "$phase" == "infer" ]]; then bs=32; fi
     echo "===== $backend $phase bs=$bs ====="
     python -u scripts/12_bench_throughput.py \
       --config configs/bench_360m.yaml \

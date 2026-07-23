@@ -1,4 +1,5 @@
-# Mainline: SmolLM2-360M arch, FineWeb-Edu ~7B tokens, dual seed via --seed + isolate
+# Mainline: SmolLM2-360M, FineWeb-Edu ~7B tokens, dual seed via --seed + isolate
+# Hardware low-prec: Transformer Engine NVFP4 (no software fake-quant)
 seed: 42
 isolate_seed_paths: true
 
@@ -17,9 +18,8 @@ data:
   tokenize_flush_docs: 256
 
 train:
-  target_tokens: 7000000000  # ~7B ≈ 20 tok/param
+  target_tokens: 7000000000
   max_steps: 500000
-  # GB200 ~189GB/GPU: large micro-batch, minimal accum → higher GPU occupancy
   batch_size: 64
   grad_accum: 1
   lr: 3.0e-4
@@ -28,7 +28,7 @@ train:
   weight_decay: 0.1
   max_grad_norm: 1.0
   log_every: 50
-  save_every: 500            # denser NFS checkpoints (machine may reclaim often)
+  save_every: 500
   resume: true
   bf16: true
   num_workers: 4
@@ -37,7 +37,6 @@ train:
   prefetch_factor: 4
   allow_tf32: true
   cudnn_benchmark: true
-  compile_mxfp4: true        # torch.compile Mxfp4Linear (FQ only; no-op for BF16)
 
 eval:
   stride: 256
@@ -47,20 +46,11 @@ eval:
   gen_prompt: "The history of artificial intelligence began"
   gen_max_new_tokens: 64
 
-quant:
-  scale_mode: rtn
-  include_lm_head: false
-
-# Short QAT-from-pretrained (R3')
-qat_steps: 500
-qat_lr: 1.0e-5
-
 paths:
   root: .
   hf_cache: hf_cache
   data_dir: data
   init_model: checkpoints/init_model
   ckpt_bf16: checkpoints/ckpt_bf16
-  ckpt_bf16_mxfp4_ptq: checkpoints/ckpt_bf16_mxfp4_ptq
-  ckpt_mxfp4: checkpoints/ckpt_mxfp4
+  ckpt_nvfp4: checkpoints/ckpt_nvfp4
   results: results/main_360m

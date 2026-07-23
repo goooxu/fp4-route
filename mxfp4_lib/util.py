@@ -38,8 +38,7 @@ def load_cfg(path: str | Path | None = None, seed: int | None = None) -> dict:
         for key in (
             "init_model",
             "ckpt_bf16",
-            "ckpt_bf16_mxfp4_ptq",
-            "ckpt_mxfp4",
+            "ckpt_nvfp4",
             "results",
         ):
             if key in paths:

@@ -46,7 +46,9 @@ def _latest_hf_dir(out_dir: str | Path) -> Path:
 
 
 @torch.no_grad()
-def eval_val_loss(model, loader, device, use_bf16: bool) -> float:
+def eval_val_loss(model, loader, device, use_bf16: bool, te_ctx=None) -> float:
+    from contextlib import nullcontext
+
     was_training = model.training
     model.eval()
     raw = _raw_model(model)
@@ -55,8 +57,10 @@ def eval_val_loss(model, loader, device, use_bf16: bool) -> float:
     for batch in loader:
         input_ids = batch["input_ids"].to(device, non_blocking=True)
         labels = batch["labels"].to(device, non_blocking=True)
-        with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=use_bf16):
-            out = raw(input_ids=input_ids, labels=labels)
+        amp = torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=use_bf16 and te_ctx is None)
+        with amp:
+            with te_ctx() if te_ctx is not None else nullcontext():
+                out = raw(input_ids=input_ids, labels=labels)
         valid = labels.numel()
         nll += float(out.loss.item()) * valid
         ntok += valid
@@ -206,30 +210,21 @@ def train_loop(
     log_name: str,
     max_steps: int | None = None,
     pre_save=None,
+    te_ctx=None,
 ) -> dict:
-    """Train for optimizer steps. Supports torchrun DDP, periodic ckpt, resume."""
+    """Train for optimizer steps. Supports torchrun DDP, periodic ckpt, resume.
+
+    te_ctx: optional callable returning a context manager (e.g. TE autocast for NVFP4).
+    Backward runs outside TE autocast (TE requirement).
+    """
+    from contextlib import nullcontext
+
     ddp, rank, world_size, device = _ddp_setup()
     is_main = rank == 0
     _configure_cuda_fast_math(cfg)
 
     model.to(device)
     model.train()
-
-    # Optional torch.compile of Mxfp4Linear modules (FQ path); no-op for plain Linear
-    # FP4_FORCE_NO_COMPILE=1 disables (useful on cold NFS resume nodes)
-    force_no = os.environ.get("FP4_FORCE_NO_COMPILE", "").strip() in ("1", "true", "yes")
-    if (not force_no) and bool((cfg.get("train") or {}).get("compile_mxfp4", False)):
-        try:
-            from mxfp4_lib.linear import maybe_compile_mxfp4_modules
-
-            n_c = maybe_compile_mxfp4_modules(model, enabled=True)
-            if is_main and n_c:
-                print(f"[train] torch.compile applied to {n_c} Mxfp4Linear modules", flush=True)
-        except Exception as e:
-            if is_main:
-                print(f"[train] compile_mxfp4 skipped: {e}", flush=True)
-    elif force_no and is_main:
-        print("[train] compile_mxfp4 disabled via FP4_FORCE_NO_COMPILE", flush=True)
 
     if ddp:
         model = torch.nn.parallel.DistributedDataParallel(
@@ -328,7 +323,7 @@ def train_loop(
             f"seq={cfg['data']['seq_len']} batch={tcfg['batch_size']} "
             f"accum={accum} tokens/step={tokens_per_step} "
             f"tf32={bool(tcfg.get('allow_tf32', True))} "
-            f"compile_mxfp4={bool(tcfg.get('compile_mxfp4', False))}",
+            f"backend={tcfg.get('backend', 'bf16')}",
             flush=True,
         )
 
@@ -350,9 +345,16 @@ def train_loop(
 
             input_ids = batch["input_ids"].to(device, non_blocking=True)
             labels = batch["labels"].to(device, non_blocking=True)
-            with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=use_bf16):
-                out = model(input_ids=input_ids, labels=labels)
-                loss = out.loss / accum
+            # TE: forward under te.autocast; BF16: torch autocast; never both nested for TE
+            amp = torch.autocast(
+                device_type=device.type,
+                dtype=torch.bfloat16,
+                enabled=use_bf16 and te_ctx is None,
+            )
+            with amp:
+                with te_ctx() if te_ctx is not None else nullcontext():
+                    out = model(input_ids=input_ids, labels=labels)
+                    loss = out.loss / accum
             loss.backward()
             micro_losses.append(float(out.loss.detach().item()))
 
@@ -394,7 +396,7 @@ def train_loop(
             )
 
         if val_loader is not None and val_every > 0 and step % val_every == 0 and is_main:
-            last_val = eval_val_loss(model, val_loader, device, use_bf16)
+            last_val = eval_val_loss(model, val_loader, device, use_bf16, te_ctx=te_ctx)
             if best_val is None or last_val < best_val:
                 best_val = last_val
             append_jsonl(

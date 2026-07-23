@@ -1,7 +1,7 @@
 """Transformer Engine Linear replace for hardware low-precision (NVFP4/MXFP8/FP8).
 
-Numerics are TE recipes (often NVFP4 on Blackwell), NOT the software OCP MXFP4
-(E2M1 group=32 E8M0) path in mxfp4_lib.quant. Keep quality and perf tables separate.
+Primary recipe on Blackwell: NVFP4BlockScaling (Tensor Core GEMM).
+Software fake-quant (OCP MXFP4 STE) has been removed from this project.
 """
 
 from __future__ import annotations
@@ -131,10 +131,41 @@ def count_te_linears(model: nn.Module) -> int:
     return n
 
 
+def revert_te_to_linear(model: nn.Module) -> int:
+    """Copy te.Linear weights into nn.Linear for HF save_pretrained."""
+    import transformer_engine.pytorch as te
+
+    count = 0
+
+    def _recurse(module: nn.Module) -> None:
+        nonlocal count
+        for name, child in list(module.named_children()):
+            if isinstance(child, te.Linear):
+                lin = nn.Linear(
+                    child.in_features,
+                    child.out_features,
+                    bias=child.bias is not None,
+                    device=child.weight.device,
+                    dtype=child.weight.dtype,
+                )
+                with torch.no_grad():
+                    lin.weight.copy_(child.weight.detach())
+                    if child.bias is not None and lin.bias is not None:
+                        lin.bias.copy_(child.bias.detach())
+                setattr(module, name, lin)
+                count += 1
+            else:
+                _recurse(child)
+
+    _recurse(model)
+    return count
+
+
 __all__ = [
     "count_te_linears",
     "get_preferred_recipe",
     "make_te_autocast_ctx",
     "replace_linears_with_te",
+    "revert_te_to_linear",
     "te_available",
 ]

@@ -92,10 +92,9 @@ run_one() {
 }
 
 # 1-GPU sweeps (separate process each)
-for backend in bf16 sw_fq te_fp4; do
+for backend in bf16 te_fp4; do
   for phase in train infer; do
     start=32
-    [[ "$backend" == "sw_fq" && "$phase" == "infer" ]] && start=8
     run_one "$backend" "$phase" n1 "$start" || true
   done
 done
@@ -103,9 +102,8 @@ done
 # 4-GPU DDP train sweeps
 if [[ "$NGPU" -ge 2 ]]; then
   NPROC=$(( NGPU < NPROC ? NGPU : NPROC ))
-  for backend in bf16 sw_fq te_fp4; do
+  for backend in bf16 te_fp4; do
     start=16
-    [[ "$backend" == "sw_fq" ]] && start=8
     run_one "$backend" train ddp "$start" || true
   done
 else

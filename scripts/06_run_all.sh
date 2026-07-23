@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Full pipeline. Usage:
-#   bash scripts/06_run_all.sh [--config CONFIG] [--seed N] [--nproc N]
+# Full pipeline (BF16 + TE NVFP4). Prefer NGC image with TE.
+#   bash scripts/06_run_all.sh --config configs/main_360m.yaml --seed 42 --nproc 4
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -23,8 +23,10 @@ export HF_HOME="${HF_HOME:-$ROOT/hf_cache}"
 export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-$ROOT/hf_cache/datasets}"
 export TRANSFORMERS_CACHE="${TRANSFORMERS_CACHE:-$ROOT/hf_cache/transformers}"
 
-# shellcheck disable=SC1091
-source "$ROOT/venv/bin/activate"
+if [[ -f "$ROOT/venv/bin/activate" ]]; then
+  # shellcheck disable=SC1091
+  source "$ROOT/venv/bin/activate"
+fi
 
 SEED_ARGS=()
 if [[ -n "$SEED" ]]; then
@@ -39,22 +41,19 @@ run_py() {
   fi
 }
 
-echo "===== [1/6] prepare data (config=$CONFIG seed=${SEED:-cfg}) ====="
+echo "===== [1/5] prepare data (config=$CONFIG seed=${SEED:-cfg}) ====="
 python scripts/01_prepare_data.py --config "$CONFIG" "${SEED_ARGS[@]}" --prefetch-fineweb
 
-echo "===== [2/6] init random model ====="
+echo "===== [2/5] init random model ====="
 python scripts/01b_init_model.py --config "$CONFIG" "${SEED_ARGS[@]}"
 
-echo "===== [3/6] train BF16 (R1/R2) nproc=$NPROC ====="
+echo "===== [3/5] train BF16 nproc=$NPROC ====="
 run_py scripts/02_train_bf16.py --config "$CONFIG" "${SEED_ARGS[@]}"
 
-echo "===== [4/6] train MXFP4 FQ (R3) nproc=$NPROC ====="
-run_py scripts/03_train_mxfp4.py --config "$CONFIG" "${SEED_ARGS[@]}"
+echo "===== [4/5] train TE NVFP4 nproc=$NPROC ====="
+run_py scripts/03_train_nvfp4.py --config "$CONFIG" "${SEED_ARGS[@]}"
 
-echo "===== [5/6] PTQ MXFP4 (R2) ====="
-python scripts/04_ptq_mxfp4.py --config "$CONFIG" "${SEED_ARGS[@]}"
-
-echo "===== [6/6] eval all routes ====="
+echo "===== [5/5] eval PPL (bf16 + nvfp4) ====="
 python scripts/05_eval_ppl.py --config "$CONFIG" "${SEED_ARGS[@]}"
 
 echo "===== DONE ====="

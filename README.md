@@ -1,107 +1,74 @@
 # fp4-route
 
-Compare three train / infer routes for **full-model MXFP4 (W4A4 semantics on transformer-block Linears)** on a causal LM.
+Compare **BF16** vs **Transformer Engine NVFP4** (hardware Tensor Core) on a causal LM.
 
 | Route | Train | Infer |
 |-------|-------|-------|
-| R1 | From-scratch BF16 | FP16 (true fp16 forward, no bf16 autocast) |
-| R2 | Same BF16 ckpt → PTQ on **block Linears only** | MXFP4 W4A4 (embed + lm_head stay BF16/FP16) |
-| R3 | From-scratch MXFP4 fake-quant (blocks) | MXFP4 W4A4 |
+| BF16 | From-scratch BF16 | FP16 forward |
+| NVFP4 | TE `NVFP4BlockScaling` on block Linears | Same TE recipe |
 
-**Quant scope (default):** industrial standard — keep `embed_tokens` + `lm_head` in high precision; quantize transformer-block `nn.Linear` only (~224 on SmolLM2-360M). Optional ablation unties `lm_head` and quantizes it too.
+**Quant scope:** transformer-block `Linear` only; `embed_tokens` + `lm_head` stay high precision.
 
-Default setup borrows architecture of [`HuggingFaceTB/SmolLM2-360M`](https://huggingface.co/HuggingFaceTB/SmolLM2-360M) via `from_config` (random weights). Training data: **FineWeb-Edu** (`sample-10BT`). Eval: **WikiText-2** PPL only.
+Architecture: [`HuggingFaceTB/SmolLM2-360M`](https://huggingface.co/HuggingFaceTB/SmolLM2-360M) via `from_config` (random init).  
+Train data: FineWeb-Edu. Eval: WikiText-2 PPL + throughput (tokens/s).
 
-MXFP4: OCP-style E2M1 + group=32 + E8M0 scale (`scale_mode=rtn` default). PyTorch fake-quant — not Transformer Engine hardware MXFP4 GEMM.
+**Requires Transformer Engine** — use:
 
-**Scope of this repo (dual track):**
+```text
+nvcr.io/nvidia/pytorch:26.06-py3
+```
 
-1. **Quality:** WikiText-2 **PPL** for R1/R2/R3 (software MXFP4 fake-quant; fair route compare).  
-2. **Performance:** train/infer **tokens/s** for `bf16` / `sw_fq` / (when available) TE hardware FP4.
-
-Software MXFP4 is **not** Tensor Core FP4 GEMM. Hardware path uses Transformer Engine recipes (e.g. NVFP4) when installable — see `EXPERIMENT_SUMMARY.md` §3.5.
+Software **fake-quant MXFP4 is removed**. Historical software-FQ numbers (if any) are archive-only in `EXPERIMENT_SUMMARY.md`.
 
 ## Quick start
 
 ```bash
-bash scripts/00_setup_remote.sh
-source venv/bin/activate
+# Inside NGC PyTorch container (or host with TE + CUDA):
+bash scripts/00_setup_remote.sh   # optional host venv; TE better from NGC
+source venv/bin/activate          # if using host venv for data prep only
 
-# 135M smoke (~200M FineWeb tokens)
-bash scripts/run_smoke_135m.sh
+# Smoke 135M
+NPROC=1 bash scripts/06_run_all.sh --config configs/smoke_135m.yaml --seed 42 --nproc 1
 
-# 360M mainline × seeds 42/43 (DDP)
-NPROC=4 bash scripts/run_main_360m.sh
+# Mainline 360M × seed
+NPROC=4 bash scripts/06_run_all.sh --config configs/main_360m.yaml --seed 42 --nproc 4
 
-# Pretrained baseline + ablations + QAT-from-pretrained
-bash scripts/run_p2_p3.sh
-
-# Official SmolLM2 FP16 + block PTQ only (cold-NFS safe: login streams venv → GPU /tmp)
-REMOTE_HOST=<gpu-ip> bash scripts/run_pretrained_baseline.sh
-
-# Throughput microbench — prefer NGC image (TE + NVFP4 included)
-# On GPU node:
+# Throughput (BF16 vs TE NVFP4), on GPU node:
 IMG=nvcr.io/nvidia/pytorch:26.06-py3 bash scripts/run_bench_docker.sh
-# From login:
-REMOTE_HOST=<gpu-ip> IMG=nvcr.io/nvidia/pytorch:26.06-py3 bash scripts/run_bench_docker.sh --remote
+IMG=nvcr.io/nvidia/pytorch:26.06-py3 NPROC=4 bash scripts/run_bench_max_ddp.sh
 ```
 
-
 Configs: `configs/smoke_135m.yaml`, `configs/main_360m.yaml`, `configs/bench_360m.yaml`.  
-Key numbers live in `EXPERIMENT_SUMMARY.md` / `RUN_STATUS.md` (`results/` is gitignored).
+Metrics live in `EXPERIMENT_SUMMARY.md` / `RUN_STATUS.md` (`results/` gitignored).
 
 ## Layout
 
 ```
-configs/          # smoke / main hyperparams
-mxfp4_lib/        # quant, Linear, replace, data, train loop, asserts
-scripts/          # prepare → train → PTQ → eval → ablations
-tests/            # quant + tie-scope unit tests
-EXPERIMENT_SUMMARY.md   # conclusions + retained dataset paths
-data/             # local FineWeb/WikiText caches (gitignored; see SUMMARY)
+configs/          # smoke / main / bench
+mxfp4_lib/        # data, train_loop, te_linear, bench
+scripts/          # prepare → BF16 train → NVFP4 train → eval / bench
 ```
 
-Run artifacts (`results/`, `checkpoints/`) are gitignored; copy key numbers into `EXPERIMENT_SUMMARY.md`.
-
-## Checkpoints & machine migration
-
-**Preferred layout:** train with the project on **NFS** (e.g. scratch) so `checkpoints/` and `results/` are durable without rsync. Checkpoints stay under the project working directory.
-
-Training writes resumable state under each ckpt dir:
+## Checkpoints
 
 ```
-checkpoints/seed_<N>/.../resume/
-  train_state.pt      # step + optimizer + rng
-  model_state.pt      # weights
-  checkpoint_meta.json
-  tokenizer/
+checkpoints/seed_<N>/
+  init_model/
+  ckpt_bf16/
+  ckpt_nvfp4/          # HF weights (nn.Linear after save); USE_NVFP4 marker
+  .../resume/          # train_state + model_state for resume
 ```
 
-- `train.save_every` (mainline default **500**) — periodic save on NFS
-- `train.resume: true` — auto-continue from `resume/`
-- SIGTERM/SIGINT — one more checkpoint then exit (for node reclaim)
+- `train.save_every` — periodic resume on NFS  
+- `train.resume: true` — continue from `resume/`  
+- SIGTERM/SIGINT — one more checkpoint then exit  
 
-**GPU node helpers** (from a login node without CUDA):
+## Remote GPU
 
 ```bash
-# Alive + GPU + project path
 python3 scripts/remote_run.py --check
-python3 scripts/remote_run.py --host 10.x.x.x 'nvidia-smi -L'
-
-# Training health (meta + log tail)
 python3 scripts/health_check.py --host 10.x.x.x --seed 42
+REMOTE_HOST=10.x.x.x bash scripts/stage_to_gpu.sh
 ```
 
-If the ephemeral GPU node dies: stop work, get a new IP, then:
-
-```bash
-bash scripts/00_setup_remote.sh   # on the new node if venv missing
-NPROC=4 bash scripts/resume_main.sh configs/main_360m.yaml 42
-```
-
-Optional non-NFS backup (pass host via env, never commit IPs):
-
-```bash
-REMOTE=user@host REMOTE_DIR=/tmp/fp4_route \
-  bash scripts/sync_artifacts.sh pull|push
-```
+Do **not** commit GPU IPs or bulky `data/` / `checkpoints/` / `results/`.

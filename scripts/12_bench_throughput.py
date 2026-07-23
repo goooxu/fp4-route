@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Throughput microbench: bf16 / software MXFP4 FQ / TE hardware FP4.
+"""Throughput microbench: bf16 / TE NVFP4 (no software fake-quant).
 
 Examples:
   python scripts/12_bench_throughput.py --backend bf16 --phase train --batch-size 64
   python scripts/12_bench_throughput.py --backend te_fp4 --phase train --sweep
   torchrun --standalone --nproc_per_node=4 scripts/12_bench_throughput.py \\
-      --backend bf16 --phase train --sweep --ddp
+      --backend te_fp4 --phase train --sweep --ddp
 """
 
 from __future__ import annotations
@@ -33,8 +33,6 @@ from mxfp4_lib.bench import (
     write_result,
 )
 from mxfp4_lib.model_config import build_model_from_arch
-from mxfp4_lib.quant import set_scale_mode
-from mxfp4_lib.replace import replace_linears_with_mxfp4
 from mxfp4_lib.util import ensure_dir, hf_env, load_cfg, set_seed
 
 
@@ -98,10 +96,6 @@ def _build_model(cfg, backend: str, device: torch.device):
         model = model.to(device=device, dtype=torch.bfloat16)
     elif backend == "fp16":
         model = model.to(device=device, dtype=torch.float16)
-    elif backend == "sw_fq":
-        model = model.to(device=device, dtype=torch.bfloat16)
-        n = replace_linears_with_mxfp4(model, train_fq=True, include_lm_head=False)
-        notes.append(f"sw_fq_linears={n}")
     elif backend == "te_fp4":
         from mxfp4_lib.te_linear import (
             get_preferred_recipe,
@@ -169,7 +163,7 @@ def _try_bench_one(
             params = model.parameters()
             opt = torch.optim.AdamW(params, lr=float((cfg.get("train") or {}).get("lr", 3e-4)), weight_decay=0.0)
             amp = torch.bfloat16 if backend == "bf16" else None
-            if backend in ("sw_fq", "te_fp4", "fp16"):
+            if backend in ("te_fp4", "fp16"):
                 amp = None
             # DDP wraps model: forward via model() still works
             step_fn = make_train_step(model, opt, batch_t, amp_dtype=amp, te_ctx=te_ctx)
@@ -236,7 +230,7 @@ def _try_bench_one(
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/bench_360m.yaml")
-    ap.add_argument("--backend", required=True, choices=["bf16", "fp16", "sw_fq", "te_fp4"])
+    ap.add_argument("--backend", required=True, choices=["bf16", "fp16", "te_fp4"])
     ap.add_argument("--phase", required=True, choices=["train", "infer"])
     ap.add_argument("--batch-size", type=int, default=None)
     ap.add_argument("--seq-len", type=int, default=None)
@@ -252,8 +246,6 @@ def main():
     cfg = load_cfg(args.config)
     hf_env(cfg)
     set_seed(cfg.get("seed", 42))
-    set_scale_mode(cfg.get("quant", {}).get("scale_mode", "rtn"))
-
     if not torch.cuda.is_available():
         raise SystemExit("CUDA required for throughput bench")
 
@@ -277,7 +269,7 @@ def main():
     measure = int(args.measure if args.measure is not None else bcfg.get("measure", 20))
 
     if args.sweep:
-        start = int(args.start_batch or (16 if args.backend == "sw_fq" and args.phase == "infer" else 32))
+        start = int(args.start_batch or 32)
         batches = _candidate_batches(start, int(args.max_batch))
     else:
         batches = [int(args.batch_size or tcfg.get("batch_size", 64))]
