@@ -37,6 +37,17 @@ def tokenize_wikitext(data_dir: Path, tok: AutoTokenizer, split: str = "train") 
 
 def _cache_path(data_dir: Path, name: str, target_tokens: int, seed: int) -> Path:
     # Prefer compact int32 memmap (.npy); keep .pt as legacy fallback
+    # Optional node-local override (cold NFS nodes): LOCAL_TRAIN_NPY / LOCAL_VAL_NPY
+    import os
+
+    if name == "train":
+        local = os.environ.get("LOCAL_TRAIN_NPY", "").strip()
+        if local and Path(local).exists():
+            return Path(local)
+    if name == "val":
+        local = os.environ.get("LOCAL_VAL_NPY", "").strip()
+        if local and Path(local).exists():
+            return Path(local)
     return Path(data_dir) / "fineweb_edu" / f"{name}_tok{target_tokens}_seed{seed}.npy"
 
 
@@ -178,16 +189,23 @@ def build_train_loader(
         sampler = DistributedSampler(ds, num_replicas=world_size, rank=rank, shuffle=True, seed=cfg["seed"])
         shuffle = False
 
-    return DataLoader(
-        ds,
+    # Allow env override for cold-node resumes (FP4_NUM_WORKERS=0 avoids NFS storms)
+    import os
+
+    nw = int(os.environ.get("FP4_NUM_WORKERS", tcfg.get("num_workers", 2)))
+    kwargs = dict(
         batch_size=int(tcfg["batch_size"]),
         shuffle=shuffle,
         sampler=sampler,
         drop_last=True,
-        num_workers=int(tcfg.get("num_workers", 2)),
-        pin_memory=True,
+        num_workers=nw,
+        pin_memory=bool(tcfg.get("pin_memory", True)),
         generator=torch.Generator().manual_seed(cfg["seed"] + rank),
     )
+    if nw > 0:
+        kwargs["persistent_workers"] = bool(tcfg.get("persistent_workers", True))
+        kwargs["prefetch_factor"] = int(tcfg.get("prefetch_factor", 4))
+    return DataLoader(ds, **kwargs)
 
 
 def build_val_loader(cfg: dict, tok: AutoTokenizer) -> DataLoader | None:
@@ -202,14 +220,18 @@ def build_val_loader(cfg: dict, tok: AutoTokenizer) -> DataLoader | None:
         seed=cfg["seed"] + 10_000,
     )
     ds = PackedLMDataset(ids, cfg["data"]["seq_len"])
-    return DataLoader(
-        ds,
+    nw = min(2, int(cfg["train"].get("num_workers", 2)))
+    kwargs = dict(
         batch_size=int(cfg["train"]["batch_size"]),
         shuffle=False,
         drop_last=False,
-        num_workers=1,
-        pin_memory=True,
+        num_workers=nw,
+        pin_memory=bool(cfg["train"].get("pin_memory", True)),
     )
+    if nw > 0:
+        kwargs["persistent_workers"] = True
+        kwargs["prefetch_factor"] = int(cfg["train"].get("prefetch_factor", 2))
+    return DataLoader(ds, **kwargs)
 
 
 def steps_for_target_tokens(cfg: dict, world_size: int = 1) -> int:

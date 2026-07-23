@@ -19,18 +19,24 @@ data:
 train:
   target_tokens: 200000000   # ~200M smoke
   max_steps: 100000          # fallback if target_tokens unused
-  batch_size: 8
-  grad_accum: 4
+  batch_size: 64
+  grad_accum: 1
   lr: 3.0e-4
   min_lr: 3.0e-5
   warmup_steps: 200
   weight_decay: 0.1
   max_grad_norm: 1.0
-  log_every: 50
-  save_every: 500            # mid-run resume checkpoints
+  log_every: 25
+  save_every: 200            # mid-run resume checkpoints
   resume: true
   bf16: true
-  num_workers: 2
+  num_workers: 4
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 4
+  allow_tf32: true
+  cudnn_benchmark: true
+  compile_mxfp4: true
 
 eval:
   stride: 256

@@ -3,6 +3,9 @@
 Scale modes:
   - rtn (default): round(log2(amax/6)) — may clamp amax slightly above 6*scale
   - floor: floor(log2(amax/6)) — OCP-style, only enlarges error, no clamp of amax
+
+Hot path is tuned for GPU: scalar thresholds (no per-call tiny tensors),
+exp2 for E8M0 scales, and pad-skip when last dim is already group-aligned.
 """
 
 from __future__ import annotations
@@ -46,23 +49,26 @@ def e8m0_scale_from_amax(
         exp = torch.floor(log_ratio).clamp(-127, 127)
     else:
         raise ValueError(mode)
-    return torch.pow(torch.tensor(2.0, device=amax.device, dtype=torch.float32), exp)
+    # exp2 avoids allocating a scalar 2.0 tensor each call
+    return torch.exp2(exp)
 
 
 def _quantize_to_e2m1(y: torch.Tensor) -> torch.Tensor:
-    """Fast nearest E2M1 quantization via clamp + half-step rounding on abs."""
+    """Nearest E2M1 quantization via midpoint thresholds (GPU-friendly scalars)."""
     # levels: 0, 0.5, 1, 1.5, 2, 3, 4, 6
     # midpoints: 0.25, 0.75, 1.25, 1.75, 2.5, 3.5, 5.0
     a = y.abs()
+    # Start at 0; promote through thresholds. Scalar RHS avoids per-call tensor alloc.
     q = torch.zeros_like(a)
-    q = torch.where(a >= 0.25, torch.tensor(0.5, device=a.device, dtype=a.dtype), q)
-    q = torch.where(a >= 0.75, torch.tensor(1.0, device=a.device, dtype=a.dtype), q)
-    q = torch.where(a >= 1.25, torch.tensor(1.5, device=a.device, dtype=a.dtype), q)
-    q = torch.where(a >= 1.75, torch.tensor(2.0, device=a.device, dtype=a.dtype), q)
-    q = torch.where(a >= 2.5, torch.tensor(3.0, device=a.device, dtype=a.dtype), q)
-    q = torch.where(a >= 3.5, torch.tensor(4.0, device=a.device, dtype=a.dtype), q)
-    q = torch.where(a >= 5.0, torch.tensor(6.0, device=a.device, dtype=a.dtype), q)
-    return q * y.sign().where(y != 0, torch.ones_like(y))
+    q = torch.where(a >= 0.25, 0.5, q)
+    q = torch.where(a >= 0.75, 1.0, q)
+    q = torch.where(a >= 1.25, 1.5, q)
+    q = torch.where(a >= 1.75, 2.0, q)
+    q = torch.where(a >= 2.5, 3.0, q)
+    q = torch.where(a >= 3.5, 4.0, q)
+    q = torch.where(a >= 5.0, 6.0, q)
+    # Preserve sign; zeros stay zero
+    return q * torch.where(y == 0, torch.ones_like(y), y.sign())
 
 
 def quantize_mxfp4(
@@ -77,6 +83,7 @@ def quantize_mxfp4(
 
     orig_shape = x.shape
     orig_dtype = x.dtype
+    # Keep computation on x.device; only cast dtype for numeric stability
     x_f = x.float().reshape(-1, orig_shape[-1])
     n, d = x_f.shape
 
@@ -154,7 +161,7 @@ def is_on_mxfp4_grid(
     ok_any = torch.zeros_like(amax, dtype=torch.bool)
     for de in range(-3, 4):
         e = (e0 + de).clamp(-127, 127)
-        scale = torch.pow(torch.tensor(2.0, device=w.device), e.float()).unsqueeze(-1)
+        scale = torch.exp2(e.float()).unsqueeze(-1)
         y = wg / scale
         a = y.abs().unsqueeze(-1)  # [O,G,32,1]
         dist = (a - levels).abs().amin(dim=-1)  # [O,G,32]

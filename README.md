@@ -14,7 +14,7 @@ Default setup borrows architecture of [`HuggingFaceTB/SmolLM2-360M`](https://hug
 
 MXFP4: OCP-style E2M1 + group=32 + E8M0 scale (`scale_mode=rtn` default). PyTorch fake-quant — not Transformer Engine hardware MXFP4 GEMM.
 
-**Scope of this repo:** inference **quality** (PPL). Throughput / latency are out of scope.
+**Scope of this repo:** inference **quality** (PPL). Throughput is not a reported metric, but training is tuned to keep GPUs busy (large micro-batch, TF32, DataLoader prefetch, optimized FQ kernels, optional `torch.compile` on `Mxfp4Linear`).
 
 ## Quick start
 
@@ -49,31 +49,43 @@ Run artifacts (`results/`, `checkpoints/`) are gitignored; copy key numbers into
 
 ## Checkpoints & machine migration
 
+**Preferred layout:** train with the project on **NFS** (e.g. scratch) so `checkpoints/` and `results/` are durable without rsync. Checkpoints stay under the project working directory.
+
 Training writes resumable state under each ckpt dir:
 
 ```
-checkpoints/.../resume/
+checkpoints/seed_<N>/.../resume/
   train_state.pt      # step + optimizer + rng
   model_state.pt      # weights
   checkpoint_meta.json
   tokenizer/
 ```
 
-- `train.save_every` (default 1000 on mainline) — periodic save
+- `train.save_every` (mainline default **500**) — periodic save on NFS
 - `train.resume: true` — auto-continue from `resume/`
 - SIGTERM/SIGINT — one more checkpoint then exit (for node reclaim)
 
-**Backup / restore when the test machine changes** (pass host via env, never commit IPs):
+**GPU node helpers** (from a login node without CUDA):
 
 ```bash
-# On durable machine / laptop
-REMOTE=user@host REMOTE_DIR=/tmp/fp4_route \
-  bash scripts/sync_artifacts.sh pull
+# Alive + GPU + project path
+python3 scripts/remote_run.py --check
+python3 scripts/remote_run.py --host 10.x.x.x 'nvidia-smi -L'
 
-# After new node is up
-REMOTE=user@newhost REMOTE_DIR=/tmp/fp4_route \
-  bash scripts/sync_artifacts.sh push
-# then on the new node:
-bash scripts/00_setup_remote.sh
+# Training health (meta + log tail)
+python3 scripts/health_check.py --host 10.x.x.x --seed 42
+```
+
+If the ephemeral GPU node dies: stop work, get a new IP, then:
+
+```bash
+bash scripts/00_setup_remote.sh   # on the new node if venv missing
 NPROC=4 bash scripts/resume_main.sh configs/main_360m.yaml 42
+```
+
+Optional non-NFS backup (pass host via env, never commit IPs):
+
+```bash
+REMOTE=user@host REMOTE_DIR=/tmp/fp4_route \
+  bash scripts/sync_artifacts.sh pull|push
 ```

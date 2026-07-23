@@ -135,20 +135,34 @@ def save_training_checkpoint(
     return state_path
 
 
+def _resume_load_dir(out_dir: str | Path) -> Path:
+    """Prefer LOCAL_RESUME_DIR (node-local SSD/tmp copy) for fast cold-start loads."""
+    local = os.environ.get("LOCAL_RESUME_DIR", "").strip()
+    if local:
+        p = Path(local)
+        if (p / "train_state.pt").exists() or (p / "model_state.pt").exists():
+            print(f"[ckpt] loading resume from local cache {p}", flush=True)
+            return p
+    return Path(out_dir) / "resume"
+
+
 def load_training_checkpoint(out_dir: str | Path, model, opt, device) -> dict | None:
-    path = _resume_path(out_dir)
+    resume_dir = _resume_load_dir(out_dir)
+    path = resume_dir / "train_state.pt"
     if not path.exists():
         # Also accept model_state-only recovery
-        ms = Path(out_dir) / "resume" / "model_state.pt"
+        ms = resume_dir / "model_state.pt"
         if ms.exists():
             sd = torch.load(ms, map_location="cpu", weights_only=True)
             _raw_model(model).load_state_dict(sd, strict=False)
             print(f"[ckpt] loaded weights-only from {ms} (no optimizer/step)")
             return {"step": 0, "weights_only": True}
         return None
+    print(f"[ckpt] torch.load train_state {path} ...", flush=True)
     blob = torch.load(path, map_location="cpu", weights_only=False)
-    ms = Path(out_dir) / "resume" / "model_state.pt"
+    ms = resume_dir / "model_state.pt"
     if ms.exists():
+        print(f"[ckpt] torch.load model_state {ms} ...", flush=True)
         sd = torch.load(ms, map_location="cpu", weights_only=True)
         _raw_model(model).load_state_dict(sd, strict=False)
     opt.load_state_dict(blob["optimizer"])
@@ -168,6 +182,23 @@ def load_training_checkpoint(out_dir: str | Path, model, opt, device) -> dict | 
     return blob
 
 
+def _configure_cuda_fast_math(cfg: dict) -> None:
+    """Enable TF32 / cudnn autotune for higher GPU utilization (BF16/FP32 matmul)."""
+    if not torch.cuda.is_available():
+        return
+    tcfg = cfg.get("train") or {}
+    allow_tf32 = bool(tcfg.get("allow_tf32", True))
+    torch.backends.cuda.matmul.allow_tf32 = allow_tf32
+    torch.backends.cudnn.allow_tf32 = allow_tf32
+    if bool(tcfg.get("cudnn_benchmark", True)):
+        torch.backends.cudnn.benchmark = True
+    # Prefer high precision tensor cores when available (PyTorch 2.x)
+    try:
+        torch.set_float32_matmul_precision("high" if allow_tf32 else "highest")
+    except Exception:
+        pass
+
+
 def train_loop(
     model: AutoModelForCausalLM,
     cfg: dict,
@@ -179,9 +210,27 @@ def train_loop(
     """Train for optimizer steps. Supports torchrun DDP, periodic ckpt, resume."""
     ddp, rank, world_size, device = _ddp_setup()
     is_main = rank == 0
+    _configure_cuda_fast_math(cfg)
 
     model.to(device)
     model.train()
+
+    # Optional torch.compile of Mxfp4Linear modules (FQ path); no-op for plain Linear
+    # FP4_FORCE_NO_COMPILE=1 disables (useful on cold NFS resume nodes)
+    force_no = os.environ.get("FP4_FORCE_NO_COMPILE", "").strip() in ("1", "true", "yes")
+    if (not force_no) and bool((cfg.get("train") or {}).get("compile_mxfp4", False)):
+        try:
+            from mxfp4_lib.linear import maybe_compile_mxfp4_modules
+
+            n_c = maybe_compile_mxfp4_modules(model, enabled=True)
+            if is_main and n_c:
+                print(f"[train] torch.compile applied to {n_c} Mxfp4Linear modules", flush=True)
+        except Exception as e:
+            if is_main:
+                print(f"[train] compile_mxfp4 skipped: {e}", flush=True)
+    elif force_no and is_main:
+        print("[train] compile_mxfp4 disabled via FP4_FORCE_NO_COMPILE", flush=True)
+
     if ddp:
         model = torch.nn.parallel.DistributedDataParallel(
             model, device_ids=[device.index], find_unused_parameters=False
@@ -263,11 +312,23 @@ def train_loop(
         signal.signal(signal.SIGTERM, _handle_signal)
         signal.signal(signal.SIGINT, _handle_signal)
 
+    tokens_per_step = (
+        int(tcfg["batch_size"])
+        * int(accum)
+        * int(cfg["data"]["seq_len"])
+        * int(world_size)
+    )
+    log_window_t0 = time.time()
+    log_window_steps = 0
+
     if is_main:
         print(
             f"[train] steps={max_steps} start_step={step} world_size={world_size} "
             f"save_every={save_every} target_tokens={tcfg.get('target_tokens')} "
-            f"seq={cfg['data']['seq_len']}",
+            f"seq={cfg['data']['seq_len']} batch={tcfg['batch_size']} "
+            f"accum={accum} tokens/step={tokens_per_step} "
+            f"tf32={bool(tcfg.get('allow_tf32', True))} "
+            f"compile_mxfp4={bool(tcfg.get('compile_mxfp4', False))}",
             flush=True,
         )
 
@@ -300,6 +361,7 @@ def train_loop(
         opt.zero_grad(set_to_none=True)
 
         step += 1
+        log_window_steps += 1
         step_loss = sum(micro_losses) / len(micro_losses)
         log_loss_sum += step_loss
         log_count += 1
@@ -310,14 +372,26 @@ def train_loop(
             last_logged_loss = avg
             log_loss_sum = 0.0
             log_count = 0
+            dt = max(1e-6, time.time() - log_window_t0)
+            steps_per_s = log_window_steps / dt
+            toks_per_s = steps_per_s * tokens_per_step
+            log_window_t0 = time.time()
+            log_window_steps = 0
             row = {
                 "step": step,
                 "loss": avg,
                 "lr": lr,
                 "seconds": elapsed_offset + (time.time() - t0),
+                "steps_per_s": steps_per_s,
+                "tokens_per_s": toks_per_s,
+                "tokens_per_step": tokens_per_step,
             }
             append_jsonl(log_path, row)
-            pbar.set_postfix(loss=f"{avg:.4f}", lr=f"{lr:.2e}")
+            pbar.set_postfix(
+                loss=f"{avg:.4f}",
+                lr=f"{lr:.2e}",
+                tok_s=f"{toks_per_s:.0f}",
+            )
 
         if val_loader is not None and val_every > 0 and step % val_every == 0 and is_main:
             last_val = eval_val_loss(model, val_loader, device, use_bf16)

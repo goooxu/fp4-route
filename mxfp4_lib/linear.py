@@ -81,4 +81,26 @@ class Mxfp4Linear(nn.Module):
         return F.linear(x_q, w, self.bias)
 
 
-__all__ = ["Mxfp4Linear"]
+def maybe_compile_mxfp4_modules(model: nn.Module, enabled: bool = True) -> int:
+    """
+    Optionally torch.compile each Mxfp4Linear.forward for GPU fusion.
+    Returns number of modules wrapped. Safe no-op if compile unavailable.
+    """
+    if not enabled:
+        return 0
+    if not hasattr(torch, "compile"):
+        return 0
+    n = 0
+    for mod in model.modules():
+        if isinstance(mod, Mxfp4Linear) and not getattr(mod, "_mxfp4_compiled", False):
+            try:
+                mod.forward = torch.compile(mod.forward, fullgraph=False, dynamic=True)
+                mod._mxfp4_compiled = True
+                n += 1
+            except Exception as e:
+                print(f"[mxfp4] compile skipped for a module: {e}", flush=True)
+                break
+    return n
+
+
+__all__ = ["Mxfp4Linear", "maybe_compile_mxfp4_modules"]

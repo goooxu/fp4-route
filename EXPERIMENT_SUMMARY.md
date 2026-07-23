@@ -37,9 +37,11 @@
 
 - R3' QAT-from-pretrained；lm_head / E8M0 `rtn`|`floor` 消融；`07_eval_pretrained.py`；`tests/test_quant.py`。
 
-### 速度说明（非目标）
+### 速度说明（非目标；工程侧已优化）
 
-- FQ 每层对 weight + activation 做 group=32 量化仿真后仍跑全精度 `F.linear`，墙钟约为同配置 BF16 的 **~4×**（~2.0 s/it vs ~0.45 s/it）。属软件仿真开销，不代表硬件 MXFP4 吞吐。
+- 主线 4×GB200、batch 64、DDP：BF16 ~**4.2 it/s**；MXFP4 FQ ~**1.24 it/s**（无 compile 续跑）或更高（compile 开启时稳态约 3 it/s）。  
+- FQ 仍是软件仿真（group=32 quant + `F.linear`），慢于 BF16 属预期，**不代表**硬件 MXFP4 吞吐。  
+- 换机冷启动：将 `init` / `resume` / FineWeb `.npy` 暂存到节点 `/tmp` 可避免 NFS thrash（见 `scripts/stage_local_and_resume.sh`）。
 
 ## 3. 结论
 
@@ -67,21 +69,32 @@
 - R3' QAT 500 步：PPL **50.6**（相对 PTQ 51.0 仅微弱恢复）。
 - E8M0：`rtn` = 51.0；`floor` ≈ 1.7e4（本实现下不可用）→ **默认 rtn**。
 
-### 3.3 主线 360M × 2 seed（FineWeb ~7B）
+### 3.3 主线 360M × seed 42（FineWeb ~7B，2026-07 重跑）
+
+配置：SmolLM2-360M arch 从零；seq 512；4×GB200 DDP；batch 64；grad_accum 1；tokens/step 131072；**53406** steps；seed 42；block Linear MXFP4（embed+lm_head 高精度）；`scale_mode=rtn`。
+
+| 路线 | Train | Infer | WikiText-2 PPL | Train loss | Best val loss |
+|------|-------|-------|----------------|------------|---------------|
+| R1 | BF16 | FP16 | **52.37** | 0.748 | **3.24** |
+| R2 | 同 R1 → block PTQ | MXFP4 W4A4 | **67.24** | 0.748 | 3.24 |
+| R3 | MXFP4 FQ | MXFP4 W4A4 | **53.73** | 0.762 | **3.30** |
+
+解读：
+
+1. **R3 ≈ R1**（PPL 53.7 vs 52.4，相对仅 ~2.6%）：从零 FQ 训推可接近 BF16 质量。  
+2. **R2 有明显 PTQ 代价**（52.4 → 67.2，约 **+28%** PPL）：block PTQ 在充分训练后仍不可忽略。  
+3. 相对冒烟（PPL~450）：7B tokens 后进入可用收敛区，结论与「欠拟合时 R1≈R3、R2 更差」一致，且 R2 差距在收敛区仍清晰。  
+4. 产物：`results/main_360m/seed_42/metrics.json`、`summary.md`；权重在 `checkpoints/seed_42/`。
 
 | 项 | 状态 |
 |----|------|
-| Seed 42 BF16 | **完成**（106812 / 106812） |
-| Seed 42 MXFP4 FQ | **中断**；最后 durable resume ≈ **step 23000–24000 / 106812（~22%）** |
-| Seed 42 PTQ / WikiText eval | 未跑 |
-| Seed 43 全流程 | 未开始 |
-
-测试机有时限、多次换机；中断时远程节点可能已回收。续跑需重新申请机器，用本地 `data/` + 历史 resume（若仍保留）或从头接 `resume_main.sh`。
+| Seed 42 全流程（BF16→FQ→PTQ→eval） | **完成** |
+| Seed 43 全流程 | **未开始** |
 
 ### 3.4 总括
 
-1. **欠拟合（从零 + 短训）**：R1≈R3，R2 有可见 PTQ 损失。  
-2. **预训练收敛区**：质量由权重决定；block PTQ 损失可控（19→51），含 lm_head 则大幅变差（→84）。  
+1. **从零充分训练（7B tokens）**：R1≈R3，R2 有可见 PTQ 质量损失。  
+2. **预训练收敛区（官方权重）**：质量由权重决定；block PTQ 损失可控（19→51），含 lm_head 则大幅变差（→84）。  
 3. 短 QAT 未能显著挽回 PTQ 损失。  
 4. 只报告质量指标；FQ 训练更慢是仿真实现使然。
 

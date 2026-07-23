@@ -30,7 +30,9 @@ def main():
     set_seed(cfg["seed"])
     set_scale_mode(cfg.get("quant", {}).get("scale_mode", "rtn"))
 
-    init_dir = cfg["paths"]["init_model"]
+    import os
+
+    init_dir = os.environ.get("LOCAL_INIT_DIR", "").strip() or cfg["paths"]["init_model"]
     print(f"[mxfp4] Loading shared init from {init_dir}")
     model = AutoModelForCausalLM.from_pretrained(init_dir)
     n = replace_linears_with_mxfp4(model, train_fq=True, include_lm_head=False)
