@@ -59,15 +59,19 @@
 
 ### 3.2 预训练上限（官方 SmolLM2-360M 权重）
 
-| 设置 | PPL | #Linear |
-|------|-----|---------|
-| FP16 | **19.0** | — |
-| PTQ blocks（跳过 lm_head） | **51.0** | 224 |
-| PTQ + untied lm_head | **84.4** | 225 |
+**2026-07-22 重跑确认**（`scripts/07_eval_pretrained.py` + `scripts/run_pretrained_baseline.sh`；与 seed42 同口径：WikiText-2、seq 512、stride 256、`scale_mode=rtn`、block Linear 仅）：
+
+| 设置 | PPL | #Linear | 备注 |
+|------|-----|---------|------|
+| FP16 | **18.97** | — | 旧文档写 19.0；重跑一致 |
+| PTQ blocks（跳过 lm_head） | **51.01** | 224 | 旧文档写 51.0；重跑一致 |
+| PTQ + untied lm_head | **84.4** | 225 | 更早消融，本次未重跑 |
+| R3' QAT 500 步 | **50.6** | 224 | 更早；相对 PTQ 仅微弱恢复 |
+| E8M0 `rtn` / `floor` | 51.0 / ~1.7e4 | 224 | **默认 rtn** |
+
+产物：`results/pretrained/pretrained_baseline.json`（gitignored；数字以上表为准）。
 
 - 旧「全量 PTQ ≈84」几乎全是 **lm_head 被量化** 的代价；默认口径 51 已明显更好。
-- R3' QAT 500 步：PPL **50.6**（相对 PTQ 51.0 仅微弱恢复）。
-- E8M0：`rtn` = 51.0；`floor` ≈ 1.7e4（本实现下不可用）→ **默认 rtn**。
 
 ### 3.3 主线 360M × seed 42（FineWeb ~7B，2026-07 重跑）
 
@@ -86,17 +90,31 @@
 3. 相对冒烟（PPL~450）：7B tokens 后进入可用收敛区，结论与「欠拟合时 R1≈R3、R2 更差」一致，且 R2 差距在收敛区仍清晰。  
 4. 产物：`results/main_360m/seed_42/metrics.json`、`summary.md`；权重在 `checkpoints/seed_42/`。
 
+### 3.3.1 官方预训练 vs 从零 seed42（同评测口径）
+
+| 角色 | 高精度推理 | MXFP4（block） |
+|------|------------|----------------|
+| **官方预训练** | FP16 **18.97** | PTQ **51.01** |
+| **从零 7B seed42** | R1 **52.37** | R2 PTQ **67.24** / R3 FQ **53.73** |
+
+1. 官方 FP16 远强于从零 R1（数据量 / 配方 / 训练预算不同，属预期）。  
+2. MXFP4 推理下：从零 R3（53.7）≈ 官方 PTQ（51.0）；从零 R2（67）更差。  
+3. PTQ 相对代价：官方 19→51（基线更强，绝对掉点大）；从零 R1→R2 约 +28% PPL。  
+4. 实现仍是 **软件 fake-quant + `F.linear`**，非硬件 MXFP4 GEMM。
+
 | 项 | 状态 |
 |----|------|
 | Seed 42 全流程（BF16→FQ→PTQ→eval） | **完成** |
+| 官方预训练基线重跑（FP16 + block PTQ） | **完成**（2026-07-22） |
 | Seed 43 全流程 | **未开始** |
 
 ### 3.4 总括
 
 1. **从零充分训练（7B tokens）**：R1≈R3，R2 有可见 PTQ 质量损失。  
-2. **预训练收敛区（官方权重）**：质量由权重决定；block PTQ 损失可控（19→51），含 lm_head 则大幅变差（→84）。  
+2. **预训练收敛区（官方权重）**：质量由权重决定；block PTQ 损失可控（19→51），含 lm_head 则大幅变差（→84）；**2026-07 重跑复核**。  
 3. 短 QAT 未能显著挽回 PTQ 损失。  
-4. 只报告质量指标；FQ 训练更慢是仿真实现使然。
+4. 只报告质量指标；FQ 训练更慢是仿真实现使然。  
+5. 冷 NFS GPU 节点：登录机 tar 流完整 `venv`→节点 `/tmp` 再评（见 `scripts/run_pretrained_baseline.sh`），避免在 GPU 上直接 rsync/import NFS 包。
 
 ## 4. 数据集位置（保留，不入 git）
 

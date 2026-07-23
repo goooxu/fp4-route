@@ -30,9 +30,13 @@ NPROC=4 bash scripts/run_main_360m.sh
 
 # Pretrained baseline + ablations + QAT-from-pretrained
 bash scripts/run_p2_p3.sh
+
+# Official SmolLM2 FP16 + block PTQ only (cold-NFS safe: login streams venv → GPU /tmp)
+REMOTE_HOST=<gpu-ip> bash scripts/run_pretrained_baseline.sh
 ```
 
-Configs: `configs/smoke_135m.yaml`, `configs/main_360m.yaml`.
+Configs: `configs/smoke_135m.yaml`, `configs/main_360m.yaml`.  
+Key numbers live in `EXPERIMENT_SUMMARY.md` / `RUN_STATUS.md` (`results/` is gitignored).
 
 ## Layout
 
