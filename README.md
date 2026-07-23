@@ -39,15 +39,13 @@ bash scripts/run_p2_p3.sh
 # Official SmolLM2 FP16 + block PTQ only (cold-NFS safe: login streams venv → GPU /tmp)
 REMOTE_HOST=<gpu-ip> bash scripts/run_pretrained_baseline.sh
 
-# Throughput microbench (stage venv first on cold NFS)
-REMOTE_HOST=<gpu-ip> bash scripts/stage_to_gpu.sh
-# on GPU:
-python scripts/12_bench_throughput.py --backend bf16 --phase train
-python scripts/12_bench_throughput.py --backend sw_fq --phase infer --batch-size 32
-# hardware FP4 (needs TE torch build/wheel):
-python scripts/11_probe_hw_fp4.py
-python scripts/12_bench_throughput.py --backend te_fp4 --phase train
+# Throughput microbench — prefer NGC image (TE + NVFP4 included)
+# On GPU node:
+IMG=nvcr.io/nvidia/pytorch:26.06-py3 bash scripts/run_bench_docker.sh
+# From login:
+REMOTE_HOST=<gpu-ip> IMG=nvcr.io/nvidia/pytorch:26.06-py3 bash scripts/run_bench_docker.sh --remote
 ```
+
 
 Configs: `configs/smoke_135m.yaml`, `configs/main_360m.yaml`, `configs/bench_360m.yaml`.  
 Key numbers live in `EXPERIMENT_SUMMARY.md` / `RUN_STATUS.md` (`results/` is gitignored).

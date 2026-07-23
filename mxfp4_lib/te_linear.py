@@ -40,15 +40,18 @@ def get_preferred_recipe():
     if device.type != "cuda":
         raise RuntimeError("TE recipes require CUDA")
 
+    # Use dims divisible by 32 (MXFP8 block) and realistic GEMM shapes for NVFP4
+    # (tiny 16x64 probes falsely fail NVFP4 cuBLAS algorithm selection).
     for name, recipe in candidates:
         try:
-            lin = te.Linear(64, 64, bias=True).to(device).bfloat16()
-            x = torch.randn(16, 64, device=device, dtype=torch.bfloat16)
+            lin = te.Linear(512, 512, bias=True).to(device).bfloat16()
+            x = torch.randn(64, 512, device=device, dtype=torch.bfloat16)
             with te.autocast(enabled=True, recipe=recipe):
                 y = lin(x)
             y.mean().backward()
             del lin, x, y
             torch.cuda.empty_cache()
+            print(f"[te] recipe {name} OK", flush=True)
             return recipe, name
         except Exception as e:
             print(f"[te] recipe {name} failed: {type(e).__name__}: {e}", flush=True)

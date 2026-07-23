@@ -50,8 +50,13 @@ def main() -> int:
     except Exception as e:
         out["errors"].append(f"import transformer_engine: {type(e).__name__}: {e}")
         path = out_dir / "capability.json"
-        with open(path, "w") as f:
-            json.dump(out, f, indent=2)
+        try:
+            with open(path, "w") as f:
+                json.dump(out, f, indent=2)
+        except OSError:
+            path = Path("/tmp/capability.json")
+            with open(path, "w") as f:
+                json.dump(out, f, indent=2)
         print(json.dumps(out, indent=2))
         print(f"[probe] wrote {path} (TE missing)")
         return 2
@@ -111,10 +116,17 @@ def main() -> int:
     }
 
     path = out_dir / "capability.json"
-    with open(path, "w") as f:
-        json.dump(out, f, indent=2)
+    try:
+        with open(path, "w") as f:
+            json.dump(out, f, indent=2)
+        print(f"[probe] wrote {path}")
+    except OSError as e:
+        # Docker root vs NFS user ownership
+        alt = Path("/tmp/capability.json")
+        with open(alt, "w") as f:
+            json.dump(out, f, indent=2)
+        print(f"[probe] could not write {path} ({e}); wrote {alt}")
     print(json.dumps(out, indent=2))
-    print(f"[probe] wrote {path}")
     return 0 if preferred else 3
 
 

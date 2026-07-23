@@ -31,22 +31,34 @@ from mxfp4_lib.replace import replace_linears_with_mxfp4
 from mxfp4_lib.util import ensure_dir, hf_env, load_cfg, set_seed
 
 
+def _has_weights(path: Path) -> bool:
+    if not path.is_dir() or not (path / "config.json").exists():
+        return False
+    if (path / "model.safetensors").exists():
+        return True
+    if (path / "model.safetensors.index.json").exists():
+        return True
+    if list(path.glob("pytorch_model*.bin")):
+        return True
+    return False
+
+
 def _build_model(cfg, backend: str, device: torch.device):
     """Build or load a 360M causal LM for the given backend."""
     init = Path(cfg["paths"].get("init_model", "checkpoints/init_model"))
     ckpt_bf16 = Path(cfg["paths"].get("ckpt_bf16", ""))
     notes = []
 
-    if ckpt_bf16 and ckpt_bf16.exists() and (ckpt_bf16 / "config.json").exists():
+    if ckpt_bf16 and _has_weights(ckpt_bf16):
         print(f"[bench] load weights from {ckpt_bf16}")
         model = AutoModelForCausalLM.from_pretrained(ckpt_bf16)
         notes.append(f"weights={ckpt_bf16}")
-    elif init.exists() and (init / "config.json").exists():
+    elif init and _has_weights(init):
         print(f"[bench] load init from {init}")
         model = AutoModelForCausalLM.from_pretrained(init)
         notes.append(f"weights={init}")
     else:
-        print("[bench] from_config random init (no ckpt on disk)")
+        print("[bench] from_config random init (no complete ckpt on disk)")
         model, _ = build_model_from_arch(cfg)
         notes.append("weights=from_config_random")
 

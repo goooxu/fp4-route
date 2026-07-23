@@ -121,31 +121,40 @@
 ### 3.5 性能轨（吞吐）— 2026-07-22 GB200 单卡
 
 协议：SmolLM2-360M arch、`seq=512`、warmup=5、measure=20、`from_config` 随机权重（吞吐不依赖收敛）、单卡。  
-脚本：`scripts/12_bench_throughput.py`；原始 JSON 在 `results/perf/`（gitignored）。
+**运行环境：** `nvcr.io/nvidia/pytorch:26.06-py3`（torch 2.13 / TE 2.16 / CUDA 13.3）。  
+脚本：`scripts/run_bench_docker.sh` → `12_bench_throughput.py`；JSON 在 `results/perf/`（gitignored）。
 
-| Backend | Phase | batch | tokens/s | ms/step | peak mem |
-|---------|-------|------:|---------:|--------:|---------:|
-| **bf16** | train | 64 | **151907** | 216 | 60 GB |
-| **bf16** | infer | 64 | **473741** | 69 | 44 GB |
-| **sw_fq**（软件 MXFP4 FQ） | train | 64 | **41664** | 786 | 68 GB |
-| **sw_fq** | infer | 32 | **46613** | 351 | 103 GB |
+| Backend | Phase | batch | tokens/s | ms/step | peak mem | 含义 |
+|---------|-------|------:|---------:|--------:|---------:|------|
+| **bf16** | train | 64 | **162460** | 202 | 60 GB | R1 训练参考 |
+| **bf16** | infer | 64 | **510948** | 64 | 44 GB | R1 推理参考 |
+| **sw_fq** | train | 64 | **44804** | 731 | 69 GB | 软件 MXFP4 FQ（质量轨 R3 实现） |
+| **sw_fq** | infer | 32 | **54176** | 302 | 103 GB | 同上；bs64 OOM |
+| **te_nvfp4** | train | 64 | **132329** | 248 | 57 GB | TE `NVFP4BlockScaling`，224 block Linear |
+| **te_nvfp4** | infer | 64 | **351598** | 93 | 40 GB | 硬件 NVFP4 推理 |
 
-说明：
+相对 bf16 的吞吐比（同 phase）：
 
-- `sw_fq` infer 在 batch=64 时 OOM（activation quant 中间态）；表中用 batch=32。  
-- **sw_fq train ≈ bf16 train × 0.27**；软件路径明显不是硬件 MXFP4 上界。  
-- 标签：`sw_fq` = OCP 风格 E2M1 group=32 E8M0 + `F.linear`；**不是** Tensor Core FP4 GEMM。
+| Backend | train | infer |
+|---------|------:|------:|
+| sw_fq | **0.28×** | **0.11×**（bs32） |
+| te_nvfp4 | **0.81×** | **0.69×** |
 
-#### 3.5.1 硬件 FP4 / Transformer Engine 状态
+解读：
+
+1. **软件 FQ 远慢于 BF16**（训练 ~1/4）：quant-dequant + 高精度 `F.linear`，不能代表硬件 MXFP4。  
+2. **TE NVFP4 在 360M 微基准上尚未超过 BF16**（训练 0.81×、推理 0.69×）：路径已走 Tensor Core FP4 GEMM，但 360M + 当前 batch 下量化/cast 开销仍明显；更大模型或 batch 扫描后才可能反超。  
+3. 标签 **`te_nvfp4` ≠ 软件 OCP MXFP4**（E2M1 group32 E8M0）；质量 PPL 仍以软件轨为准。  
+4. 主机裸 venv **不要**装 TE；统一用 NGC 镜像（见 `run_bench_docker.sh`）。
+
+#### 3.5.1 硬件 FP4 / TE 状态（已解锁）
 
 | 项 | 结果 |
 |----|------|
-| GPU | NVIDIA GB200，capability (10, 0) |
-| `transformer_engine_cu12` 2.16.0 | aarch64 wheel **可装** |
-| `transformer_engine_torch` | **无 aarch64 预编译 wheel**；源码编译失败（无系统 nvcc / 构建错误） |
-| 硬件 NVFP4 吞吐 | **本环境暂不可测** |
-
-后续解锁：提供 aarch64 的 TE torch wheel，或安装完整 CUDA toolkit 后成功编译 `transformer_engine_torch`，再跑 `--backend te_fp4`。代码侧已预留 `mxfp4_lib/te_linear.py` + `--backend te_fp4`。
+| 镜像 | **`nvcr.io/nvidia/pytorch:26.06-py3`** |
+| TE | **2.16.0**；NVFP4 / MXFP8 / DelayedScaling 均 smoke OK |
+| 主测 recipe | **NVFP4BlockScaling** |
+| 主机 pip TE | aarch64 无 `transformer_engine_torch` wheel → **不推荐** |
 
 ## 4. 数据集位置（保留，不入 git）
 

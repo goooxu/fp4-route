@@ -42,30 +42,25 @@ Same eval recipe as seed42 (WikiText-2, seq 512, stride 256, `scale_mode=rtn`, b
 | Official pretrained | 18.97 | 51.01 (PTQ) |
 | From-scratch seed42 | 52.37 (R1) | 67.24 (R2) / 53.73 (R3) |
 
-## Perf track (throughput) — PARTIAL (2026-07-22)
+## Perf track (throughput) — DONE in NGC docker (2026-07-22)
 
-Dual-track: quality = software PPL (above); perf = tokens/s.
+Dual-track: quality = software PPL (above); perf = tokens/s.  
+**Image:** `nvcr.io/nvidia/pytorch:26.06-py3` (TE 2.16, NVFP4 OK).
 
-| Backend | Phase | batch | tok/s |
-|---------|-------|------:|------:|
-| bf16 | train | 64 | **151907** |
-| bf16 | infer | 64 | **473741** |
-| sw_fq | train | 64 | **41664** |
-| sw_fq | infer | 32 | **46613** |
-
-- Scripts: `12_bench_throughput.py`, `11_probe_hw_fp4.py`, `stage_to_gpu.sh`
-- TE / hardware FP4: **blocked** on aarch64 (no `transformer_engine_torch` wheel; source build failed). See `results/perf/capability.json`.
+| Backend | Phase | batch | tok/s | vs bf16 |
+|---------|-------|------:|------:|--------:|
+| bf16 | train | 64 | **162460** | 1.00× |
+| bf16 | infer | 64 | **510948** | 1.00× |
+| sw_fq | train | 64 | **44804** | 0.28× |
+| sw_fq | infer | 32 | **54176** | — |
+| **te_nvfp4** | train | 64 | **132329** | 0.81× |
+| **te_nvfp4** | infer | 64 | **351598** | 0.69× |
 
 ```bash
-REMOTE_HOST=<gpu> bash scripts/stage_to_gpu.sh
-# on GPU:
-export PATH=/tmp/mxfp4_full_venv/bin:$PATH
-cd /tmp/mxfp4_work
-python scripts/12_bench_throughput.py --backend bf16 --phase train
-python scripts/12_bench_throughput.py --backend sw_fq --phase train
-# when TE works:
-# python scripts/11_probe_hw_fp4.py
-# python scripts/12_bench_throughput.py --backend te_fp4 --phase train
+# On GPU node:
+IMG=nvcr.io/nvidia/pytorch:26.06-py3 bash scripts/run_bench_docker.sh
+# From login:
+REMOTE_HOST=<gpu-ip> bash scripts/run_bench_docker.sh --remote
 ```
 
 ## Seed 43 — NOT STARTED
