@@ -68,26 +68,63 @@ def _is_main(rank: int) -> bool:
     return rank == 0
 
 
-def _build_model(cfg, backend: str, device: torch.device):
+def _resolve_route(route: str | None, backend: str, weights: str | None, phase: str):
+    """Map R1/R2/R3 to backend + weight source."""
+    if not route:
+        return backend, (weights or "auto"), None
+    r = route.upper()
+    if r == "R1":
+        # train microbench uses bf16 compute; infer uses fp16
+        b = "bf16" if phase == "train" else "fp16"
+        return b, "bf16", "R1"
+    if r == "R2":
+        return "te_fp4", "bf16", "R2"
+    if r == "R3":
+        return "te_fp4", "nvfp4", "R3"
+    raise SystemExit(f"unknown route {route}")
+
+
+def _build_model(
+    cfg,
+    backend: str,
+    device: torch.device,
+    *,
+    weights: str = "auto",
+    route_label: str | None = None,
+):
+    """weights: auto|bf16|nvfp4|random — checkpoint source; backend: compute path."""
     init = Path(cfg["paths"].get("init_model", "checkpoints/init_model"))
     ckpt_bf16 = Path(cfg["paths"].get("ckpt_bf16", ""))
+    ckpt_nvfp4 = Path(cfg["paths"].get("ckpt_nvfp4", ""))
     notes = []
+    rank = int(os.environ.get("RANK", "0"))
+    wsrc = (weights or "auto").lower()
 
-    if ckpt_bf16 and _has_weights(ckpt_bf16):
-        if _is_main(int(os.environ.get("RANK", "0"))):
-            print(f"[bench] load weights from {ckpt_bf16}")
-        model = AutoModelForCausalLM.from_pretrained(ckpt_bf16)
-        notes.append(f"weights={ckpt_bf16}")
-    elif init and _has_weights(init):
-        if _is_main(int(os.environ.get("RANK", "0"))):
-            print(f"[bench] load init from {init}")
-        model = AutoModelForCausalLM.from_pretrained(init)
-        notes.append(f"weights={init}")
+    load_path = None
+    if wsrc == "bf16" and _has_weights(ckpt_bf16):
+        load_path = ckpt_bf16
+    elif wsrc == "nvfp4" and _has_weights(ckpt_nvfp4):
+        load_path = ckpt_nvfp4
+    elif wsrc == "auto":
+        if _has_weights(ckpt_bf16):
+            load_path = ckpt_bf16
+        elif _has_weights(ckpt_nvfp4):
+            load_path = ckpt_nvfp4
+        elif _has_weights(init):
+            load_path = init
+
+    if load_path is not None and wsrc != "random":
+        if _is_main(rank):
+            print(f"[bench] load weights from {load_path}")
+        model = AutoModelForCausalLM.from_pretrained(load_path)
+        notes.append(f"weights={load_path}")
     else:
-        if _is_main(int(os.environ.get("RANK", "0"))):
-            print("[bench] from_config random init (no complete ckpt on disk)")
+        if _is_main(rank):
+            print("[bench] from_config random init")
         model, _ = build_model_from_arch(cfg)
         notes.append("weights=from_config_random")
+    if route_label:
+        notes.append(f"route={route_label}")
 
     te_ctx = None
     recipe_name = None
@@ -146,11 +183,15 @@ def _try_bench_one(
     world_size: int,
     use_ddp: bool,
     local_rank: int,
+    weights: str = "auto",
+    route_label: str | None = None,
 ) -> Optional[BenchResult]:
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
     try:
-        model, te_ctx, notes, recipe_name = _build_model(cfg, backend, device)
+        model, te_ctx, notes, recipe_name = _build_model(
+            cfg, backend, device, weights=weights, route_label=route_label
+        )
         model = model.to(device)
         if use_ddp:
             model = DDP(model, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=False)
@@ -179,6 +220,8 @@ def _try_bench_one(
         backend_label = backend
         if backend == "te_fp4" and recipe_name:
             backend_label = f"te_{recipe_name.replace('BlockScaling', '').lower()}"
+        if route_label:
+            backend_label = f"{route_label}_{backend_label}"
 
         # Synchronize ranks before timing
         if use_ddp and dist.is_initialized():
@@ -196,6 +239,8 @@ def _try_bench_one(
             notes=notes + (f";ddp={world_size}" if use_ddp else ""),
             extra={
                 "recipe": recipe_name,
+                "route": route_label,
+                "weights": weights,
                 "config": "bench",
                 "per_gpu_batch": batch,
                 "global_batch": batch * world_size,
@@ -230,8 +275,15 @@ def _try_bench_one(
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/bench_360m.yaml")
-    ap.add_argument("--backend", required=True, choices=["bf16", "fp16", "te_fp4"])
+    ap.add_argument("--backend", default=None, choices=["bf16", "fp16", "te_fp4"])
     ap.add_argument("--phase", required=True, choices=["train", "infer"])
+    ap.add_argument("--route", default=None, choices=["R1", "R2", "R3", "r1", "r2", "r3"])
+    ap.add_argument(
+        "--weights",
+        default=None,
+        choices=["auto", "bf16", "nvfp4", "random"],
+        help="Checkpoint source (default from --route)",
+    )
     ap.add_argument("--batch-size", type=int, default=None)
     ap.add_argument("--seq-len", type=int, default=None)
     ap.add_argument("--warmup", type=int, default=None)
@@ -243,11 +295,20 @@ def main():
     ap.add_argument("--ddp", action="store_true", help="Expect torchrun; use DDP (nproc from env)")
     args = ap.parse_args()
 
+    if not args.route and not args.backend:
+        raise SystemExit("Need --backend and/or --route")
+
     cfg = load_cfg(args.config)
     hf_env(cfg)
     set_seed(cfg.get("seed", 42))
     if not torch.cuda.is_available():
         raise SystemExit("CUDA required for throughput bench")
+
+    backend = args.backend or "bf16"
+    weights = args.weights or "auto"
+    route_label = None
+    if args.route:
+        backend, weights, route_label = _resolve_route(args.route, backend, args.weights, args.phase)
 
     use_ddp, rank, world, local_rank = _dist_info()
     if args.ddp and not use_ddp:
@@ -279,10 +340,13 @@ def main():
 
     for batch in batches:
         if _is_main(rank):
-            print(f"[bench] try backend={args.backend} phase={args.phase} per_gpu_bs={batch} world={world}")
+            print(
+                f"[bench] try route={route_label or '-'} backend={backend} "
+                f"weights={weights} phase={args.phase} per_gpu_bs={batch} world={world}"
+            )
         res = _try_bench_one(
             cfg=cfg,
-            backend=args.backend,
+            backend=backend,
             phase=args.phase,
             batch=batch,
             seq=seq,
@@ -292,6 +356,8 @@ def main():
             world_size=world,
             use_ddp=use_ddp,
             local_rank=local_rank,
+            weights=weights,
+            route_label=route_label,
         )
         # If any rank OOMs, all should treat as fail — OOM is local
         oom_flag = 0 if res is not None else 1
@@ -316,7 +382,7 @@ def main():
     if best is None:
         if use_ddp and dist.is_initialized():
             dist.destroy_process_group()
-        raise SystemExit(f"No successful batch for {args.backend}/{args.phase}")
+        raise SystemExit(f"No successful batch for {route_label or backend}/{args.phase}")
 
     if _is_main(rank):
         out_dir = ensure_dir(Path(cfg["paths"]["results"]))
