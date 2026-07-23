@@ -107,14 +107,45 @@
 | Seed 42 全流程（BF16→FQ→PTQ→eval） | **完成** |
 | 官方预训练基线重跑（FP16 + block PTQ） | **完成**（2026-07-22） |
 | Seed 43 全流程 | **未开始** |
+| 吞吐 bench（bf16 / sw_fq） | **完成**（见 §3.5） |
+| 硬件 TE FP4 吞吐 | **阻塞**（见 §3.5.2） |
 
 ### 3.4 总括
 
 1. **从零充分训练（7B tokens）**：R1≈R3，R2 有可见 PTQ 质量损失。  
 2. **预训练收敛区（官方权重）**：质量由权重决定；block PTQ 损失可控（19→51），含 lm_head 则大幅变差（→84）；**2026-07 重跑复核**。  
 3. 短 QAT 未能显著挽回 PTQ 损失。  
-4. 只报告质量指标；FQ 训练更慢是仿真实现使然。  
-5. 冷 NFS GPU 节点：登录机 tar 流完整 `venv`→节点 `/tmp` 再评（见 `scripts/run_pretrained_baseline.sh`），避免在 GPU 上直接 rsync/import NFS 包。
+4. **双轨**：质量用软件 FQ 公平比 PPL；性能用 tokens/s（见 §3.5）。软件 FQ 训练吞吐约为 BF16 的 ~1/4，与「仿真 quant 非硬件 GEMM」一致。  
+5. 冷 NFS GPU 节点：登录机 tar 流完整 `venv`→节点 `/tmp`（`scripts/stage_to_gpu.sh` / `run_pretrained_baseline.sh`）。
+
+### 3.5 性能轨（吞吐）— 2026-07-22 GB200 单卡
+
+协议：SmolLM2-360M arch、`seq=512`、warmup=5、measure=20、`from_config` 随机权重（吞吐不依赖收敛）、单卡。  
+脚本：`scripts/12_bench_throughput.py`；原始 JSON 在 `results/perf/`（gitignored）。
+
+| Backend | Phase | batch | tokens/s | ms/step | peak mem |
+|---------|-------|------:|---------:|--------:|---------:|
+| **bf16** | train | 64 | **151907** | 216 | 60 GB |
+| **bf16** | infer | 64 | **473741** | 69 | 44 GB |
+| **sw_fq**（软件 MXFP4 FQ） | train | 64 | **41664** | 786 | 68 GB |
+| **sw_fq** | infer | 32 | **46613** | 351 | 103 GB |
+
+说明：
+
+- `sw_fq` infer 在 batch=64 时 OOM（activation quant 中间态）；表中用 batch=32。  
+- **sw_fq train ≈ bf16 train × 0.27**；软件路径明显不是硬件 MXFP4 上界。  
+- 标签：`sw_fq` = OCP 风格 E2M1 group=32 E8M0 + `F.linear`；**不是** Tensor Core FP4 GEMM。
+
+#### 3.5.1 硬件 FP4 / Transformer Engine 状态
+
+| 项 | 结果 |
+|----|------|
+| GPU | NVIDIA GB200，capability (10, 0) |
+| `transformer_engine_cu12` 2.16.0 | aarch64 wheel **可装** |
+| `transformer_engine_torch` | **无 aarch64 预编译 wheel**；源码编译失败（无系统 nvcc / 构建错误） |
+| 硬件 NVFP4 吞吐 | **本环境暂不可测** |
+
+后续解锁：提供 aarch64 的 TE torch wheel，或安装完整 CUDA toolkit 后成功编译 `transformer_engine_torch`，再跑 `--backend te_fp4`。代码侧已预留 `mxfp4_lib/te_linear.py` + `--backend te_fp4`。
 
 ## 4. 数据集位置（保留，不入 git）
 

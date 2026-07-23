@@ -14,7 +14,12 @@ Default setup borrows architecture of [`HuggingFaceTB/SmolLM2-360M`](https://hug
 
 MXFP4: OCP-style E2M1 + group=32 + E8M0 scale (`scale_mode=rtn` default). PyTorch fake-quant — not Transformer Engine hardware MXFP4 GEMM.
 
-**Scope of this repo:** inference **quality** (PPL). Throughput is not a reported metric, but training is tuned to keep GPUs busy (large micro-batch, TF32, DataLoader prefetch, optimized FQ kernels, optional `torch.compile` on `Mxfp4Linear`).
+**Scope of this repo (dual track):**
+
+1. **Quality:** WikiText-2 **PPL** for R1/R2/R3 (software MXFP4 fake-quant; fair route compare).  
+2. **Performance:** train/infer **tokens/s** for `bf16` / `sw_fq` / (when available) TE hardware FP4.
+
+Software MXFP4 is **not** Tensor Core FP4 GEMM. Hardware path uses Transformer Engine recipes (e.g. NVFP4) when installable — see `EXPERIMENT_SUMMARY.md` §3.5.
 
 ## Quick start
 
@@ -33,9 +38,18 @@ bash scripts/run_p2_p3.sh
 
 # Official SmolLM2 FP16 + block PTQ only (cold-NFS safe: login streams venv → GPU /tmp)
 REMOTE_HOST=<gpu-ip> bash scripts/run_pretrained_baseline.sh
+
+# Throughput microbench (stage venv first on cold NFS)
+REMOTE_HOST=<gpu-ip> bash scripts/stage_to_gpu.sh
+# on GPU:
+python scripts/12_bench_throughput.py --backend bf16 --phase train
+python scripts/12_bench_throughput.py --backend sw_fq --phase infer --batch-size 32
+# hardware FP4 (needs TE torch build/wheel):
+python scripts/11_probe_hw_fp4.py
+python scripts/12_bench_throughput.py --backend te_fp4 --phase train
 ```
 
-Configs: `configs/smoke_135m.yaml`, `configs/main_360m.yaml`.  
+Configs: `configs/smoke_135m.yaml`, `configs/main_360m.yaml`, `configs/bench_360m.yaml`.  
 Key numbers live in `EXPERIMENT_SUMMARY.md` / `RUN_STATUS.md` (`results/` is gitignored).
 
 ## Layout

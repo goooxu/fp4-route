@@ -7,3 +7,7 @@ tqdm>=4.66.0
 safetensors>=0.4.0
 sentencepiece>=0.2.0
 protobuf>=4.0.0
+# Optional hardware FP4 (perf track). Needs aarch64-compatible wheels or CUDA toolkit + build:
+#   pip install transformer_engine_cu12==2.16.0
+#   pip install transformer_engine_torch==2.16.0   # may require build on aarch64
+#   pip install transformer-engine==2.16.0

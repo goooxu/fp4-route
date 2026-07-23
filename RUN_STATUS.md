@@ -42,6 +42,32 @@ Same eval recipe as seed42 (WikiText-2, seq 512, stride 256, `scale_mode=rtn`, b
 | Official pretrained | 18.97 | 51.01 (PTQ) |
 | From-scratch seed42 | 52.37 (R1) | 67.24 (R2) / 53.73 (R3) |
 
+## Perf track (throughput) — PARTIAL (2026-07-22)
+
+Dual-track: quality = software PPL (above); perf = tokens/s.
+
+| Backend | Phase | batch | tok/s |
+|---------|-------|------:|------:|
+| bf16 | train | 64 | **151907** |
+| bf16 | infer | 64 | **473741** |
+| sw_fq | train | 64 | **41664** |
+| sw_fq | infer | 32 | **46613** |
+
+- Scripts: `12_bench_throughput.py`, `11_probe_hw_fp4.py`, `stage_to_gpu.sh`
+- TE / hardware FP4: **blocked** on aarch64 (no `transformer_engine_torch` wheel; source build failed). See `results/perf/capability.json`.
+
+```bash
+REMOTE_HOST=<gpu> bash scripts/stage_to_gpu.sh
+# on GPU:
+export PATH=/tmp/mxfp4_full_venv/bin:$PATH
+cd /tmp/mxfp4_work
+python scripts/12_bench_throughput.py --backend bf16 --phase train
+python scripts/12_bench_throughput.py --backend sw_fq --phase train
+# when TE works:
+# python scripts/11_probe_hw_fp4.py
+# python scripts/12_bench_throughput.py --backend te_fp4 --phase train
+```
+
 ## Seed 43 — NOT STARTED
 
 ```bash

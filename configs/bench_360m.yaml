@@ -1,0 +1,41 @@
+# Throughput microbench: SmolLM2-360M arch, short fixed protocol
+seed: 42
+isolate_seed_paths: false
+
+arch_model_id: HuggingFaceTB/SmolLM2-360M
+tokenizer_id: HuggingFaceTB/SmolLM2-360M
+
+data:
+  seq_len: 512
+  eval_dataset: Salesforce/wikitext
+  eval_dataset_config: wikitext-2-raw-v1
+
+train:
+  batch_size: 64
+  lr: 3.0e-4
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  bf16: true
+  allow_tf32: true
+  cudnn_benchmark: true
+  compile_mxfp4: false
+
+bench:
+  warmup: 10
+  measure: 40
+  # Optional batch sweep for max throughput (stop near OOM)
+  batch_sizes: [16, 32, 64, 96, 128]
+
+quant:
+  scale_mode: rtn
+  include_lm_head: false
+
+paths:
+  root: .
+  hf_cache: hf_cache
+  data_dir: data
+  init_model: checkpoints/init_model
+  ckpt_bf16: checkpoints/seed_42/ckpt_bf16
+  ckpt_bf16_mxfp4_ptq: checkpoints/seed_42/ckpt_bf16_mxfp4_ptq
+  ckpt_mxfp4: checkpoints/seed_42/ckpt_mxfp4
+  results: results/perf
