@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Full pipeline (BF16 + TE NVFP4). Prefer NGC image with TE.
+# Full R1/R2/R3 pipeline (hardware TE NVFP4; no software fake-quant).
+# Prefer: nvcr.io/nvidia/pytorch:26.06-py3
 #   bash scripts/06_run_all.sh --config configs/main_360m.yaml --seed 42 --nproc 4
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -47,13 +48,13 @@ python scripts/01_prepare_data.py --config "$CONFIG" "${SEED_ARGS[@]}" --prefetc
 echo "===== [2/5] init random model ====="
 python scripts/01b_init_model.py --config "$CONFIG" "${SEED_ARGS[@]}"
 
-echo "===== [3/5] train BF16 nproc=$NPROC ====="
+echo "===== [3/5] R1/R2 train BF16 nproc=$NPROC ====="
 run_py scripts/02_train_bf16.py --config "$CONFIG" "${SEED_ARGS[@]}"
 
-echo "===== [4/5] train TE NVFP4 nproc=$NPROC ====="
+echo "===== [4/5] R3 train TE NVFP4 nproc=$NPROC ====="
 run_py scripts/03_train_nvfp4.py --config "$CONFIG" "${SEED_ARGS[@]}"
 
-echo "===== [5/5] eval PPL (bf16 + nvfp4) ====="
-python scripts/05_eval_ppl.py --config "$CONFIG" "${SEED_ARGS[@]}"
+echo "===== [5/5] eval PPL R1 + R2 + R3 ====="
+python scripts/05_eval_ppl.py --config "$CONFIG" "${SEED_ARGS[@]}" --routes R1,R2,R3
 
 echo "===== DONE ====="

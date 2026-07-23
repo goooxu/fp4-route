@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Route 1/2: from-scratch BF16 training starting from shared init_model."""
+"""R1/R2 shared: from-scratch BF16 training (R1 = FP16 infer; R2 = TE NVFP4 infer)."""
 
 from __future__ import annotations
 

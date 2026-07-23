@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hardware NVFP4 training via Transformer Engine (block Linears only).
+"""R3: from-scratch NVFP4 training via Transformer Engine (block Linears only).
 
 Requires TE (use NGC: nvcr.io/nvidia/pytorch:26.06-py3). No software fake-quant.
 """

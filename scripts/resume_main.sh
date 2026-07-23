@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Resume mainline (BF16 + TE NVFP4) after artifact sync.
+# Resume R1/R2 (BF16) + R3 (NVFP4) after artifact sync.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -47,12 +47,12 @@ run_py() {
   fi
 }
 
-echo "[resume] BF16"
+echo "[resume] R1/R2 BF16"
 run_py scripts/02_train_bf16.py --config "$CFG" "${SEED_ARGS[@]}"
 
-echo "[resume] TE NVFP4"
+echo "[resume] R3 TE NVFP4"
 run_py scripts/03_train_nvfp4.py --config "$CFG" "${SEED_ARGS[@]}"
 
-echo "[resume] eval PPL"
-python scripts/05_eval_ppl.py --config "$CFG" "${SEED_ARGS[@]}"
+echo "[resume] eval R1,R2,R3"
+python scripts/05_eval_ppl.py --config "$CFG" "${SEED_ARGS[@]}" --routes R1,R2,R3
 echo "[resume] DONE"
