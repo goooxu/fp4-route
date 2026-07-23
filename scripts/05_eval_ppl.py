@@ -40,6 +40,21 @@ _ROUTE_ALIASES = {
 }
 
 
+def _pad_te_seq(chunk: torch.Tensor, labels: torch.Tensor, *, multiple: int = 16, pad_id: int = 0):
+    """Pad seq dim so TE NVFP4/FP8 accepts activations.
+
+    NVFP4 requires the flattened leading dim (B*S for [B,S,H]) divisible by 16.
+    With B=1 this means S % 16 == 0. Padded labels are -100 (excluded from NLL).
+    """
+    s = chunk.size(1)
+    if s % multiple == 0:
+        return chunk, labels
+    pad = multiple - (s % multiple)
+    chunk = torch.nn.functional.pad(chunk, (0, pad), value=pad_id)
+    labels = torch.nn.functional.pad(labels, (0, pad), value=-100)
+    return chunk, labels
+
+
 @torch.no_grad()
 def eval_ppl(model, tok, cfg, device, *, te_ctx=None, use_fp16: bool = False) -> float:
     from contextlib import nullcontext
@@ -52,6 +67,7 @@ def eval_ppl(model, tok, cfg, device, *, te_ctx=None, use_fp16: bool = False) ->
     input_ids = enc["input_ids"].to(device)
     seq_len = cfg["data"]["seq_len"]
     stride = cfg["eval"]["stride"]
+    pad_id = tok.pad_token_id if tok.pad_token_id is not None else (tok.eos_token_id or 0)
     nll_sum = 0.0
     n_tokens = 0
     total = input_ids.size(1)
@@ -64,6 +80,9 @@ def eval_ppl(model, tok, cfg, device, *, te_ctx=None, use_fp16: bool = False) ->
         labels = chunk.clone()
         if begin != 0:
             labels[:, : chunk.size(1) - trg_len] = -100
+        # TE NVFP4: pad trailing tokens so B*S is divisible by 16
+        if te_ctx is not None:
+            chunk, labels = _pad_te_seq(chunk, labels, multiple=16, pad_id=pad_id)
         amp = torch.autocast(
             device_type=device.type,
             dtype=torch.float16 if use_fp16 else torch.bfloat16,

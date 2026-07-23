@@ -2,7 +2,7 @@
 
 **Stack:** **R1 / R2 / R3** with TE **NVFP4** (software fake-quant removed)  
 **Image:** `nvcr.io/nvidia/pytorch:26.06-py3`  
-**Host:** `REMOTE_HOST` only (no IPs in git)
+**Host:** pass via `REMOTE_HOST` only (no IPs in git)
 
 ## Routes
 
@@ -12,28 +12,46 @@
 | R2 | same BF16 ckpt | TE NVFP4 |
 | R3 | TE NVFP4 | TE NVFP4 |
 
-## Quality (PPL)
+## Seed 42 from-scratch — **COMPLETE** (2026-07-23)
 
-| Item | Status |
-|------|--------|
-| Seed 42 R1/R2/R3 with TE code | **Not started** (need retrain) |
-| Seed 43 | **Not started** |
+| Stage | Status |
+|-------|--------|
+| Init + BF16 train (R1/R2) | **Done** 53406/53406 |
+| R3 TE NVFP4 train | **Done** 53406/53406 (resume ok; final HF via `04_export_nvfp4_from_resume.py`) |
+| PPL R1/R2/R3 | **Done** → `results/main_360m/seed_42/metrics.json` |
+| Throughput benches | **Done** (incl. R3 train 4GPU) |
+| Full report | `results/main_360m/seed_42/full_report.md` |
 
-```bash
-NPROC=4 bash scripts/06_run_all.sh --config configs/main_360m.yaml --seed 42 --nproc 4
-# eval only:
-python scripts/05_eval_ppl.py --config configs/main_360m.yaml --seed 42 --routes R1,R2,R3
-```
+Checkpoint durability: `save_every=500`, atomic `.tmp`→rename, SIGTERM/SIGINT save.  
+Resume scripts: `run_resume_r123.sh` / `run_finish_r123.sh`. No scheduled tasks.
 
-## Perf (tokens/s) — DONE 2026-07-22
+### Quality (WikiText-2 PPL)
 
-`bf16` ≈ R1; `te_nvfp4` ≈ R2/R3 hardware path.
+| Route | Train | Infer | PPL |
+|-------|-------|-------|-----|
+| R1 | bf16 | fp16 | **51.94** |
+| R2 | bf16 | te_nvfp4 | **54.07** |
+| R3 | te_nvfp4 | te_nvfp4 | **53.32** |
 
-| Backend | Phase | nGPU | best tok/s |
-|---------|-------|-----:|-----------:|
-| bf16 | train | 1 | 173578 (bs192) |
-| bf16 | infer | 1 | 532828 (bs192) |
-| te_nvfp4 | train | 1 | 156443 (bs192) |
-| te_nvfp4 | infer | 1 | 445168 (bs192) |
-| bf16 | train | 4 | 669799 |
-| te_nvfp4 | train | 4 | 587034 |
+### Perf best (tokens/s, seq=512)
+
+| Config | nGPU | bs/gpu | tok/s |
+|--------|-----:|-------:|------:|
+| R1 train | 1 | 192 | **174672** |
+| R1 infer | 1 | 192 | **524557** |
+| R1 train | 4 | 192 | **688153** |
+| R2 infer | 1 | 192 | **444015** |
+| R3 train | 1 | 192 | **156553** |
+| R3 infer | 1 | 192 | **443179** |
+| R3 train | 4 | 192 | **616741** |
+
+### Fixes applied during close-out
+
+1. `revert_te_to_linear`: ignore empty TE bias Parameters  
+2. CPU export from `ckpt_nvfp4/resume` when final HF save fails  
+3. PPL TE pad seq to multiple of **16** (NVFP4 block)  
+4. `write_full_report.py` `sys.path` fix  
+
+## Seed 43
+
+**Not started**

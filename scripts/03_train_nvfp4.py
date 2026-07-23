@@ -16,6 +16,7 @@ import torch
 from transformers import AutoModelForCausalLM
 
 from mxfp4_lib.te_linear import (
+    count_te_linears,
     get_preferred_recipe,
     make_te_autocast_ctx,
     replace_linears_with_te,
@@ -57,8 +58,12 @@ def main():
         cfg["paths"]["ckpt_nvfp4"] = out_dir
 
     def pre_save(raw):
+        # TE often registers empty bias Parameters when bias=False; revert handles that.
         n_rev = revert_te_to_linear(raw)
         print(f"[nvfp4] pre_save: reverted {n_rev} te.Linear → nn.Linear for HF save")
+        n_left = count_te_linears(raw)
+        if n_left:
+            raise RuntimeError(f"pre_save left {n_left} te.Linear modules unreverted")
 
     train_loop(
         model,

@@ -131,6 +131,25 @@ def count_te_linears(model: nn.Module) -> int:
     return n
 
 
+def _effective_bias(module: nn.Module) -> Optional[torch.Tensor]:
+    """Return a real bias tensor, or None.
+
+    Transformer Engine often registers ``bias`` even when the layer was built with
+    ``bias=False``; in that case the Parameter is an empty tensor (numel==0).
+    Treating that as ``bias is not None`` makes nn.Linear(bias=True) and then
+    ``copy_`` fails with a shape mismatch (e.g. 960 vs 0).
+    """
+    b = getattr(module, "bias", None)
+    if b is None or not torch.is_tensor(b):
+        return None
+    try:
+        if b.numel() == 0:
+            return None
+    except Exception:
+        return None
+    return b
+
+
 def revert_te_to_linear(model: nn.Module) -> int:
     """Copy te.Linear weights into nn.Linear for HF save_pretrained."""
     import transformer_engine.pytorch as te
@@ -141,17 +160,33 @@ def revert_te_to_linear(model: nn.Module) -> int:
         nonlocal count
         for name, child in list(module.named_children()):
             if isinstance(child, te.Linear):
+                w = child.weight.detach()
+                b = _effective_bias(child)
+                # Prefer weight shape over attributes (more reliable across TE versions)
+                out_f, in_f = int(w.shape[0]), int(w.shape[1])
                 lin = nn.Linear(
-                    child.in_features,
-                    child.out_features,
-                    bias=child.bias is not None,
-                    device=child.weight.device,
-                    dtype=child.weight.dtype,
+                    in_f,
+                    out_f,
+                    bias=b is not None,
+                    device=w.device,
+                    dtype=w.dtype,
                 )
                 with torch.no_grad():
-                    lin.weight.copy_(child.weight.detach())
-                    if child.bias is not None and lin.bias is not None:
-                        lin.bias.copy_(child.bias.detach())
+                    if lin.weight.shape != w.shape:
+                        raise RuntimeError(
+                            f"te.Linear {name}: weight shape {tuple(w.shape)} "
+                            f"!= nn.Linear {tuple(lin.weight.shape)}"
+                        )
+                    lin.weight.copy_(w)
+                    if b is not None and lin.bias is not None:
+                        if lin.bias.shape != b.shape:
+                            print(
+                                f"[te] skip bias copy for {name}: "
+                                f"nn {tuple(lin.bias.shape)} vs te {tuple(b.shape)}",
+                                flush=True,
+                            )
+                        else:
+                            lin.bias.copy_(b.detach())
                 setattr(module, name, lin)
                 count += 1
             else:

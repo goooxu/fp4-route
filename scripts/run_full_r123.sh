@@ -35,15 +35,31 @@ run_on_gpu() {
 
   # Backup legacy software-FQ tree so we do not resume wrong weights
   if [[ "$BACKUP_LEGACY" == "1" && -d "$NFS_ROOT/checkpoints/seed_${SEED}" ]]; then
-    LEGACY="$NFS_ROOT/checkpoints/seed_${SEED}_legacy_swfq_${TS}"
-    if [[ ! -d "$LEGACY" ]]; then
-      echo "[full-r123] backup checkpoints/seed_${SEED} -> $LEGACY" | tee -a "$LOG"
-      mv "$NFS_ROOT/checkpoints/seed_${SEED}" "$LEGACY"
+    # skip if already only a fresh empty tree mid-run
+    if [[ -d "$NFS_ROOT/checkpoints/seed_${SEED}/ckpt_bf16" ]] || [[ -f "$NFS_ROOT/checkpoints/seed_${SEED}/init_model/model.safetensors" ]]; then
+      LEGACY="$NFS_ROOT/checkpoints/seed_${SEED}_legacy_swfq_${TS}"
+      if [[ ! -d "$LEGACY" ]]; then
+        echo "[full-r123] backup checkpoints/seed_${SEED} -> $LEGACY" | tee -a "$LOG"
+        mv "$NFS_ROOT/checkpoints/seed_${SEED}" "$LEGACY"
+      fi
+    fi
+  fi
+  # Offline arch config (config.json only) for AutoConfig without HF hub write
+  ARCH_STUB="$NFS_ROOT/checkpoints/seed_${SEED}_legacy_swfq_ARCH"
+  if [[ ! -f "$ARCH_STUB/config.json" ]]; then
+    mkdir -p "$ARCH_STUB"
+    SRC=$(ls -d "$NFS_ROOT"/checkpoints/seed_${SEED}_legacy_swfq_*/init_model 2>/dev/null | head -1 || true)
+    if [[ -n "$SRC" && -f "$SRC/config.json" ]]; then
+      cp -f "$SRC/config.json" "$SRC/tokenizer.json" "$SRC/tokenizer_config.json" "$ARCH_STUB/" 2>/dev/null || \
+        cp -f "$SRC/config.json" "$ARCH_STUB/"
+      echo "[full-r123] arch stub from $SRC" | tee -a "$LOG"
     fi
   fi
   # Clear partial results for this seed quality dir (optional)
   rm -rf "$NFS_ROOT/results/main_360m/seed_${SEED}" 2>/dev/null || true
   mkdir -p "$NFS_ROOT/checkpoints" "$NFS_ROOT/results/main_360m" "$NFS_ROOT/results/perf"
+  # Ensure docker (root) can write results/checkpoints on NFS
+  chmod -R a+rwX "$NFS_ROOT/checkpoints" "$NFS_ROOT/results" "$NFS_ROOT/logs" 2>/dev/null || true
 
   docker run --rm --gpus all --network host \
     --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
@@ -55,9 +71,11 @@ run_on_gpu() {
     -e SKIP_BENCH="$SKIP_BENCH" \
     -e MAX_BATCH="$MAX_BATCH" \
     -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-    -e HF_HOME=/work/hf_cache \
-    -e HF_DATASETS_CACHE=/work/hf_cache/datasets \
-    -e TRANSFORMERS_CACHE=/work/hf_cache/transformers \
+    -e HF_HOME=/tmp/hf_home \
+    -e HF_DATASETS_CACHE=/tmp/hf_home/datasets \
+    -e TRANSFORMERS_CACHE=/tmp/hf_home/transformers \
+    -e HF_HUB_CACHE=/tmp/hf_home/hub \
+    -e ARCH_CONFIG_DIR=/work/checkpoints/seed_${SEED}_legacy_swfq_ARCH \
     -e CUDA_VISIBLE_DEVICES=0,1,2,3 \
     -v "$NFS_ROOT:/work" \
     -w /work \
