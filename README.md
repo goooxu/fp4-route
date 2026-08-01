@@ -4,7 +4,7 @@ Compare **three train/infer routes** on a causal LM using **hardware TE NVFP4**.
 
 | Route | Train | Infer |
 |-------|-------|-------|
-| **R1** | From-scratch BF16 | FP16 |
+| **R1** | From-scratch BF16 | BF16 |
 | **R2** | Same BF16 checkpoint | TE **NVFP4** (block Linears) |
 | **R3** | TE **NVFP4** train (block Linears) | TE **NVFP4** |
 
@@ -40,7 +40,7 @@ NPROC=4 SEED=43 bash scripts/run_resume_r123.sh
 # R3 HF export only (if TE final save failed but resume exists)
 python scripts/04_export_nvfp4_from_resume.py --seed 42
 
-# Throughput (bf16 ≈ R1; te_fp4 ≈ R2/R3 infer path)
+# Throughput (bf16 = R1 train/infer; te_fp4 = R2/R3 infer path)
 IMG=nvcr.io/nvidia/pytorch:26.06-py3 bash scripts/run_bench_docker.sh
 IMG=nvcr.io/nvidia/pytorch:26.06-py3 NPROC=4 bash scripts/run_bench_max_ddp.sh
 ```

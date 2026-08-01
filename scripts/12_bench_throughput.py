@@ -74,9 +74,8 @@ def _resolve_route(route: str | None, backend: str, weights: str | None, phase: 
         return backend, (weights or "auto"), None
     r = route.upper()
     if r == "R1":
-        # train microbench uses bf16 compute; infer uses fp16
-        b = "bf16" if phase == "train" else "fp16"
-        return b, "bf16", "R1"
+        # train + infer both use bf16 compute
+        return "bf16", "bf16", "R1"
     if r == "R2":
         return "te_fp4", "bf16", "R2"
     if r == "R3":

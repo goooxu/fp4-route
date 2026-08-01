@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """WikiText-2 PPL for routes R1 / R2 / R3 (TE NVFP4).
 
-R1: BF16 train → FP16 infer
+R1: BF16 train → BF16 infer
 R2: same BF16 ckpt → TE NVFP4 infer (block Linear)
 R3: TE NVFP4 train → TE NVFP4 infer
 """
@@ -105,10 +105,10 @@ def _load_route(cfg, route: str, device: torch.device):
 
     if route == "R1":
         path = Path(paths["ckpt_bf16"])
-        model = AutoModelForCausalLM.from_pretrained(path, torch_dtype=torch.float16)
+        model = AutoModelForCausalLM.from_pretrained(path, torch_dtype=torch.bfloat16)
         tok = AutoTokenizer.from_pretrained(path)
         model.to(device)
-        return model, tok, None, True, "bf16", "fp16"
+        return model, tok, None, False, "bf16", "bf16"
 
     if route in ("R2", "R3"):
         if not te_available():
@@ -187,7 +187,7 @@ def main():
         "",
         "## Notes",
         "",
-        "- **R1**: BF16 train → **FP16** infer",
+        "- **R1**: BF16 train → **BF16** infer",
         "- **R2**: same BF16 ckpt → TE **NVFP4** infer (block Linears)",
         "- **R3**: TE NVFP4 train → TE NVFP4 infer",
     ]

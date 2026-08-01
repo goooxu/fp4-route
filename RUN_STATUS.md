@@ -8,7 +8,7 @@
 
 | Route | Train | Infer |
 |-------|-------|-------|
-| R1 | BF16 | FP16 |
+| R1 | BF16 | BF16 |
 | R2 | same BF16 ckpt | TE NVFP4 |
 | R3 | TE NVFP4 | TE NVFP4 |
 
@@ -37,7 +37,7 @@
 
 | Route | Train | Infer | PPL |
 |-------|-------|-------|-----|
-| R1 | bf16 | fp16 | **51.94** |
+| R1 | bf16 | bf16 | **51.95** |
 | R2 | bf16 | te_nvfp4 | **54.07** |
 | R3 | te_nvfp4 | te_nvfp4 | **53.32** |
 
@@ -46,7 +46,7 @@
 | Config | nGPU | bs/gpu | tok/s |
 |--------|-----:|-------:|------:|
 | R1 train | 1 | 192 | **174672** |
-| R1 infer | 1 | 192 | **524557** |
+| R1 infer | 1 | 192 | **526460** |
 | R1 train | 4 | 192 | **688153** |
 | R2 infer | 1 | 192 | **444015** |
 | R3 train | 1 | 192 | **156553** |
@@ -71,16 +71,18 @@ Steady train logs (jsonl): BF16 ~**555k** tok/s; NVFP4 ~**448k** tok/s (4GPU).
 
 | Route | Train | Infer | PPL |
 |-------|-------|-------|-----|
-| R1 | bf16 | fp16 | **37.07** |
+| R1 | bf16 | bf16 | **37.07** |
 | R2 | bf16 | te_nvfp4 | **40.08** |
 | R3 | te_nvfp4 | te_nvfp4 | **39.62** |
+
+R1 PPL/infer remeasured with **BF16** infer (aligned with train).
 
 ### Perf best (tokens/s, seq=512, seed43 tags)
 
 | Config | nGPU | bs/gpu | tok/s |
 |--------|-----:|-------:|------:|
 | R1 train | 1 | 160 | **171657** |
-| R1 infer | 1 | 192 | **521817** |
+| R1 infer | 1 | 192 | **526795** |
 | R1 train | 4 | 192 | **681069** |
 | R2 infer | 1 | 192 | **441062** |
 | R3 train | 1 | 192 | **155668** |
@@ -95,7 +97,7 @@ Steady train logs (jsonl): BF16 ~**573k** tok/s; NVFP4 ~**439k** tok/s (4GPU).
 
 | | Seed 42 | Seed 43 |
 |--|--------:|--------:|
-| R1 PPL | 51.94 | **37.07** |
+| R1 PPL | 51.95 | **37.07** |
 | R2 PPL | 54.07 | **40.08** |
 | R3 PPL | 53.32 | **39.62** |
 | R3 vs R1 ΔPPL | +1.38 | +2.55 |
@@ -110,3 +112,4 @@ Pattern holds on both seeds: **R3 略好于 R2**；相对 R1 有小幅 PPL 代�
 3. PPL TE pad seq to multiple of **16** (NVFP4 block)  
 4. `write_full_report.py` `sys.path` / `PYTHONPATH`  
 5. Bench filenames include `seed${SEED}` to avoid clobber  
+6. R1 infer uses **BF16** (same as train); PPL/bench remeasured  

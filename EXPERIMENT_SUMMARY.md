@@ -7,7 +7,7 @@
 
 | 路线 | 训练 | 推理 | 权重 |
 |------|------|------|------|
-| **R1** | BF16 从零 | FP16 | `ckpt_bf16` |
+| **R1** | BF16 从零 | BF16 | `ckpt_bf16` |
 | **R2** | 同 R1（共享 BF16 ckpt） | TE NVFP4（block Linear） | `ckpt_bf16` + 推理时 `te.Linear` |
 | **R3** | TE NVFP4 从零 | TE NVFP4 | `ckpt_nvfp4` |
 
@@ -22,7 +22,7 @@ Scope：block Linear；`embed` + `lm_head` 高精度。
 
 | 路线 | Train | Infer | PPL | vs R1 |
 |------|-------|-------|-----|------:|
-| R1 | BF16 | FP16 | **51.94** | 1.00× |
+| R1 | BF16 | BF16 | **51.95** | 1.00× |
 | R2 | BF16 | TE NVFP4 | **54.07** | 1.04× |
 | R3 | TE NVFP4 | TE NVFP4 | **53.32** | 1.03× |
 
@@ -32,9 +32,11 @@ Scope：block Linear；`embed` + `lm_head` 高精度。
 
 | 路线 | Train | Infer | PPL | vs R1 |
 |------|-------|-------|-----|------:|
-| R1 | BF16 | FP16 | **37.07** | 1.00× |
+| R1 | BF16 | BF16 | **37.07** | 1.00× |
 | R2 | BF16 | TE NVFP4 | **40.08** | 1.08× |
 | R3 | TE NVFP4 | TE NVFP4 | **39.62** | 1.07× |
+
+> R1 PPL/infer 均为 **BF16** 推理重测（与训练 dtype 一致）。
 
 报告：`results/main_360m/seed_43/full_report.md`
 
@@ -50,8 +52,8 @@ Scope：block Linear；`embed` + `lm_head` 高精度。
 
 | Route / path | Phase | nGPU | bs | tokens/s | vs R1 |
 |--------------|-------|-----:|---:|---------:|------:|
-| R1 bf16/fp16 | train | 1 | 192 | **174672** | 1.00× |
-| R1 fp16 | infer | 1 | 192 | **524557** | 1.00× |
+| R1 bf16 | train | 1 | 192 | **174672** | 1.00× |
+| R1 bf16 | infer | 1 | 192 | **526460** | 1.00× |
 | R3 te_nvfp4 | train | 1 | 192 | **156553** | 0.90× |
 | R2 te_nvfp4 | infer | 1 | 192 | **444015** | 0.85× |
 | R3 te_nvfp4 | infer | 1 | 192 | **443179** | 0.84× |
@@ -64,8 +66,8 @@ Scope：block Linear；`embed` + `lm_head` 高精度。
 
 | Route / path | Phase | nGPU | bs | tokens/s | vs R1 |
 |--------------|-------|-----:|---:|---------:|------:|
-| R1 bf16/fp16 | train | 1 | 160 | **171657** | 1.00× |
-| R1 fp16 | infer | 1 | 192 | **521817** | 1.00× |
+| R1 bf16 | train | 1 | 160 | **171657** | 1.00× |
+| R1 bf16 | infer | 1 | 192 | **526795** | 1.00× |
 | R3 te_nvfp4 | train | 1 | 192 | **155668** | 0.91× |
 | R2 te_nvfp4 | infer | 1 | 192 | **441062** | 0.85× |
 | R3 te_nvfp4 | infer | 1 | 192 | **440909** | 0.84× |
@@ -74,7 +76,7 @@ Scope：block Linear；`embed` + `lm_head` 高精度。
 
 稳态 jsonl（4GPU）：BF16 ~**573k**；NVFP4 ~**439k**。
 
-**吞吐结论：** NVFP4 训练约 R1 的 **0.85–0.90×**；NVFP4 推理约 R1 FP16 的 **0.84–0.85×**（两 seed 一致）。
+**吞吐结论：** NVFP4 训练约 R1 的 **0.85–0.90×**；NVFP4 推理约 R1 BF16 的 **0.84–0.85×**（两 seed 一致）。
 
 ## 4. 数据与工程
 
