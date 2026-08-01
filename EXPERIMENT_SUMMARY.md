@@ -1,9 +1,7 @@
 # R1 / R2 / R3 路线对比实验总结
 
-> **当前口径（软件 fake-quant 已删除）**  
-> 三条路线仍为 **R1 / R2 / R3**，低精度统一为 **Transformer Engine `NVFP4BlockScaling`**（硬件 Tensor Core）。  
-> 环境优先：`nvcr.io/nvidia/pytorch:26.06-py3`。  
-> TE **没有** OCP MXFP4 recipe；硬件 4bit = **NVFP4**（与旧软件 MXFP4 数值网格不同）。
+> 三条路线 **R1 / R2 / R3**，低精度统一为 **Transformer Engine `NVFP4BlockScaling`**（硬件 Tensor Core）。  
+> 环境：`nvcr.io/nvidia/pytorch:26.06-py3`。
 
 ## 1. 三条路线
 
@@ -78,14 +76,7 @@ Scope：block Linear；`embed` + `lm_head` 高精度。
 
 **吞吐结论：** NVFP4 训练约 R1 的 **0.85–0.90×**；NVFP4 推理约 R1 FP16 的 **0.84–0.85×**（两 seed 一致）。
 
-## 4. 归档：软件 fake-quant（已删除）
-
-| 历史设置 | PPL |
-|----------|-----|
-| 官方 FP16 / 软件 PTQ | 18.97 / 51.01 |
-| 从零 R1 / R2 / R3（软件 FQ） | 52.37 / 67.24 / 53.73 |
-
-## 5. 数据与工程
+## 4. 数据与工程
 
 - Train: FineWeb-Edu `sample-10BT`（seed 相关 token 缓存）  
 - Eval: WikiText-2  

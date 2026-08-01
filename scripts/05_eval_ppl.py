@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WikiText-2 PPL for routes R1 / R2 / R3 (TE NVFP4; no software fake-quant).
+"""WikiText-2 PPL for routes R1 / R2 / R3 (TE NVFP4).
 
 R1: BF16 train → FP16 infer
 R2: same BF16 ckpt → TE NVFP4 infer (block Linear)
@@ -174,7 +174,7 @@ def main():
     with open(results_dir / "metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
     lines = [
-        "# MXFP4 / NVFP4 Route Compare (TE hardware; no software fake-quant)",
+        "# R1 / R2 / R3 Route Compare (TE NVFP4)",
         "",
         "| Route | Train | Infer | WikiText-2 PPL |",
         "|-------|-------|-------|----------------|",
@@ -190,7 +190,6 @@ def main():
         "- **R1**: BF16 train → **FP16** infer",
         "- **R2**: same BF16 ckpt → TE **NVFP4** infer (block Linears)",
         "- **R3**: TE NVFP4 train → TE NVFP4 infer",
-        "- No software STE fake-quant.",
     ]
     (results_dir / "summary.md").write_text("\n".join(lines) + "\n")
     print(f"[eval] wrote {results_dir / 'metrics.json'}")

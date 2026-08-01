@@ -1,4 +1,4 @@
-# Throughput microbench: BF16 vs TE NVFP4 (no software fake-quant)
+# Throughput microbench: BF16 vs TE NVFP4
 seed: 42
 isolate_seed_paths: false
 

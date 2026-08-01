@@ -1,5 +1,5 @@
 # Mainline: SmolLM2-360M, FineWeb-Edu ~7B tokens, dual seed via --seed + isolate
-# Hardware low-prec: Transformer Engine NVFP4 (no software fake-quant)
+# Hardware low-prec: Transformer Engine NVFP4
 seed: 42
 isolate_seed_paths: true
 

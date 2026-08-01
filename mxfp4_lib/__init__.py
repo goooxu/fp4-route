@@ -1,6 +1,4 @@
-"""MXFP4 / NVFP4 route experiment library.
-
-Hardware low-precision uses Transformer Engine (NVFP4). Software fake-quant is removed.
+"""R1/R2/R3 route experiment library (Transformer Engine NVFP4).
 """
 
 from .te_linear import (

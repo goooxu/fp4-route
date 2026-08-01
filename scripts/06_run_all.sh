@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full R1/R2/R3 pipeline (hardware TE NVFP4; no software fake-quant).
+# Full R1/R2/R3 pipeline (hardware TE NVFP4).
 # Prefer: nvcr.io/nvidia/pytorch:26.06-py3
 #   bash scripts/06_run_all.sh --config configs/main_360m.yaml --seed 42 --nproc 4
 set -euo pipefail

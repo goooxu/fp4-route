@@ -1,7 +1,6 @@
-"""Transformer Engine Linear replace for hardware low-precision (NVFP4/MXFP8/FP8).
+"""Transformer Engine Linear replace for hardware low-precision (NVFP4 / FP8 recipes).
 
 Primary recipe on Blackwell: NVFP4BlockScaling (Tensor Core GEMM).
-Software fake-quant (OCP MXFP4 STE) has been removed from this project.
 """
 
 from __future__ import annotations

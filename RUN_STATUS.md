@@ -1,6 +1,6 @@
 # Run status
 
-**Stack:** **R1 / R2 / R3** with TE **NVFP4** (software fake-quant removed)  
+**Stack:** **R1 / R2 / R3** with Transformer Engine **NVFP4**  
 **Image:** `nvcr.io/nvidia/pytorch:26.06-py3`  
 **Host:** pass via `REMOTE_HOST` only (no IPs in git)
 

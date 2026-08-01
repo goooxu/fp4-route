@@ -1,6 +1,6 @@
 # fp4-route
 
-Compare **three train/infer routes** on a causal LM using **hardware TE NVFP4** (no software fake-quant).
+Compare **three train/infer routes** on a causal LM using **hardware TE NVFP4**.
 
 | Route | Train | Infer |
 |-------|-------|-------|
@@ -13,13 +13,11 @@ Compare **three train/infer routes** on a causal LM using **hardware TE NVFP4** 
 Architecture: [`HuggingFaceTB/SmolLM2-360M`](https://huggingface.co/HuggingFaceTB/SmolLM2-360M) via `from_config` (random init).  
 Train: FineWeb-Edu. Eval: WikiText-2 **PPL** + throughput (tokens/s).
 
-**Requires Transformer Engine** — use:
+**Requires Transformer Engine (NVFP4)** — use:
 
 ```text
 nvcr.io/nvidia/pytorch:26.06-py3
 ```
-
-TE exposes **NVFP4** (not OCP MXFP4 recipe). Software STE fake-quant is **removed**.
 
 ## Quick start
 

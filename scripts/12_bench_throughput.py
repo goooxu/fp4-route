@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Throughput microbench: bf16 / TE NVFP4 (no software fake-quant).
+"""Throughput microbench: bf16 / TE NVFP4.
 
 Examples:
   python scripts/12_bench_throughput.py --backend bf16 --phase train --batch-size 64
