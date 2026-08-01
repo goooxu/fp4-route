@@ -134,11 +134,17 @@ NVIDIA GPU 的 **Tensor Core** 对特定数据布局与缩放方式有硬性要�
 token id → Embedding → [Block × 32] → RMSNorm → lm_head → logits
 ```
 
-每个 Block 大致包含：
+每个 Block 为 **Pre-Norm** 结构，包含：
 
-- 自注意力（Q/K/V/O 等线性层）；
-- 前馈网络 MLP（升维/降维线性层）；
-- RMSNorm、残差连接、激活函数（SiLU）等。
+- **Self-Attention：** `input_layernorm` → `q/k/v_proj` → RoPE → GQA 注意力 → `o_proj` → 残差；
+- **MLP（SwiGLU 风格）：** `post_attention_layernorm` → `gate_proj` / `up_proj` → SiLU 门控逐元乘 → `down_proj` → 残差。
+
+全部 Linear **无 bias**（`attention_bias=false`，`mlp_bias=false`）。  
+`lm_head` 与 `embed_tokens` **权重绑定**（`tie_word_embeddings=true`）。
+
+下图给出 **整体栈 + 单层展开 + GQA 与本实验精度图例**：
+
+![SmolLM2-360M 完整结构](figures/fig08_smollm2_360m_arch.svg)
 
 ### 3.2 低精度作用范围（量化 scope）
 
@@ -520,7 +526,8 @@ results/perf/bench_*_seed<N>_best.json
 |------|------|
 | `docs/figures/fig01_dtype_ladder.svg` | 精度阶梯 |
 | `docs/figures/fig02_routes_r123.svg` | 三路线 |
-| `docs/figures/fig03_model_and_quant_scope.svg` | 模型与量化范围 |
+| `docs/figures/fig03_model_and_quant_scope.svg` | 模型与量化范围（简图） |
+| `docs/figures/fig08_smollm2_360m_arch.svg` | **SmolLM2-360M 完整结构** |
 | `docs/figures/fig04_pipeline.svg` | 流水线 |
 | `docs/figures/fig05_te_forward.svg` | TE 前向概念 |
 | `docs/figures/fig06_ppl_seed*.svg` | PPL 柱状图 |
