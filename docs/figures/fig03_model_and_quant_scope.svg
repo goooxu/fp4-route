@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="520" viewBox="0 0 820 520">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="410" y="30" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="18" font-weight="600" fill="#111827">模型结构与低精度作用范围</text>
+  <text x="410" y="52" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#6b7280">SmolLM2-360M 架构 · Llama decoder-only · ~362M 参数</text>
+
+  <!-- stack -->
+  <g font-family="DejaVu Sans,Arial,sans-serif">
+    <rect x="220" y="70" width="380" height="44" rx="8" fill="#e5e7eb" stroke="#6b7280"/>
+    <text x="410" y="97" text-anchor="middle" font-size="14" fill="#111827">Token Embedding（保持高精度）</text>
+
+    <rect x="220" y="130" width="380" height="200" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+    <text x="410" y="158" text-anchor="middle" font-size="14" font-weight="600" fill="#047857">×32 Transformer Block</text>
+    <text x="410" y="180" text-anchor="middle" font-size="12" fill="#065f46">Attention + MLP 中的 Linear → te.Linear（NVFP4 GEMM）</text>
+
+    <rect x="250" y="200" width="140" height="50" rx="6" fill="#10b981"/>
+    <text x="320" y="230" text-anchor="middle" font-size="12" fill="#fff">Q/K/V/O Linear</text>
+    <rect x="430" y="200" width="140" height="50" rx="6" fill="#10b981"/>
+    <text x="500" y="230" text-anchor="middle" font-size="12" fill="#fff">MLP up/down</text>
+
+    <rect x="250" y="265" width="320" height="40" rx="6" fill="#d1fae5" stroke="#059669"/>
+    <text x="410" y="290" text-anchor="middle" font-size="12" fill="#064e3b">RMSNorm / Softmax / 残差 · 仍用高精</text>
+
+    <rect x="220" y="350" width="380" height="44" rx="8" fill="#e5e7eb" stroke="#6b7280"/>
+    <text x="410" y="377" text-anchor="middle" font-size="14" fill="#111827">lm_head（与 embed 绑定，保持高精度）</text>
+  </g>
+
+  <!-- legend -->
+  <rect x="80" y="420" width="18" height="18" rx="3" fill="#10b981"/>
+  <text x="108" y="434" font-family="DejaVu Sans,Arial,sans-serif" font-size="13" fill="#111827">进入 TE NVFP4 的 Linear（约 224 个）</text>
+  <rect x="420" y="420" width="18" height="18" rx="3" fill="#e5e7eb" stroke="#6b7280"/>
+  <text x="448" y="434" font-family="DejaVu Sans,Arial,sans-serif" font-size="13" fill="#111827">不替换：词表映射层对误差更敏感</text>
+
+  <text x="80" y="480" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#374151">配置摘要：hidden=960 · intermediate=2560 · layers=32 · GQA 15/5 heads · vocab=49152 · seq=512</text>
+</svg>

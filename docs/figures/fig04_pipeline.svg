@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="280" viewBox="0 0 920 280">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="460" y="28" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="18" font-weight="600" fill="#111827">端到端实验流水线</text>
+
+  <g font-family="DejaVu Sans,Arial,sans-serif" font-size="12">
+    <!-- boxes -->
+    <rect x="20" y="70" width="120" height="70" rx="10" fill="#f3f4f6" stroke="#6b7280"/>
+    <text x="80" y="100" text-anchor="middle" fill="#111827">① 准备数据</text>
+    <text x="80" y="120" text-anchor="middle" fill="#6b7280">FineWeb 7B</text>
+
+    <rect x="170" y="70" width="120" height="70" rx="10" fill="#f3f4f6" stroke="#6b7280"/>
+    <text x="230" y="100" text-anchor="middle" fill="#111827">② 随机 init</text>
+    <text x="230" y="120" text-anchor="middle" fill="#6b7280">from_config</text>
+
+    <rect x="320" y="70" width="120" height="70" rx="10" fill="#dbeafe" stroke="#2563eb"/>
+    <text x="380" y="100" text-anchor="middle" fill="#1e40af">③ BF16 训练</text>
+    <text x="380" y="120" text-anchor="middle" fill="#1d4ed8">R1/R2 共享</text>
+
+    <rect x="470" y="70" width="120" height="70" rx="10" fill="#d1fae5" stroke="#059669"/>
+    <text x="530" y="100" text-anchor="middle" fill="#065f46">④ NVFP4 训练</text>
+    <text x="530" y="120" text-anchor="middle" fill="#047857">R3</text>
+
+    <rect x="620" y="70" width="120" height="70" rx="10" fill="#fef3c7" stroke="#d97706"/>
+    <text x="680" y="100" text-anchor="middle" fill="#92400e">⑤ PPL 评测</text>
+    <text x="680" y="120" text-anchor="middle" fill="#b45309">R1,R2,R3</text>
+
+    <rect x="770" y="70" width="120" height="70" rx="10" fill="#fce7f3" stroke="#db2777"/>
+    <text x="830" y="100" text-anchor="middle" fill="#9d174d">⑥ 吞吐 bench</text>
+    <text x="830" y="120" text-anchor="middle" fill="#be185d">1/4 GPU</text>
+
+    <!-- arrows -->
+    <path d="M140 105 L170 105" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M290 105 L320 105" stroke="#6b7280" stroke-width="2"/>
+    <path d="M440 105 L470 105" stroke="#6b7280" stroke-width="2"/>
+    <path d="M590 105 L620 105" stroke="#6b7280" stroke-width="2"/>
+    <path d="M740 105 L770 105" stroke="#6b7280" stroke-width="2"/>
+  </g>
+
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#6b7280"/>
+    </marker>
+  </defs>
+
+  <text x="40" y="190" font-family="DejaVu Sans,Arial,sans-serif" font-size="13" fill="#374151">硬件：4×NVIDIA GB200 · 软件：nvcr.io/nvidia/pytorch:26.06-py3（含 Transformer Engine）</text>
+  <text x="40" y="215" font-family="DejaVu Sans,Arial,sans-serif" font-size="13" fill="#374151">编排：scripts/run_full_r123.sh 或 run_resume_r123.sh · 断点 save_every=500 · seed 42 / 43</text>
+  <text x="40" y="250" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#6b7280">说明：③ 产出 ckpt_bf16；④ 从同一 init 另训 ckpt_nvfp4；⑤ 中 R2 加载 ckpt_bf16 再套 TE NVFP4。</text>
+</svg>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="420" viewBox="0 0 760 420">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="380" y="32" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="18" font-weight="600" fill="#111827">浮点精度阶梯（示意）</text>
+  <text x="380" y="54" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#6b7280">位数越少 → 表示更粗，但计算通常更快、更省显存</text>
+
+  <!-- ladder boxes -->
+  <g font-family="DejaVu Sans,Arial,sans-serif">
+    <rect x="80" y="80" width="600" height="48" rx="8" fill="#1e3a8a"/>
+    <text x="380" y="110" text-anchor="middle" font-size="15" fill="#fff">FP32 · 32 bit · 高精度“标准尺子”</text>
+
+    <rect x="110" y="140" width="540" height="48" rx="8" fill="#2563eb"/>
+    <text x="380" y="170" text-anchor="middle" font-size="15" fill="#fff">BF16 · 16 bit · 本实验 R1 训练/推理</text>
+
+    <rect x="140" y="200" width="480" height="48" rx="8" fill="#3b82f6"/>
+    <text x="380" y="230" text-anchor="middle" font-size="15" fill="#fff">FP16 · 16 bit · 常见混合精度推理选项</text>
+
+    <rect x="180" y="260" width="400" height="48" rx="8" fill="#0d9488"/>
+    <text x="380" y="290" text-anchor="middle" font-size="15" fill="#fff">FP8 · 8 bit · 更激进的 Tensor Core 路径</text>
+
+    <rect x="220" y="320" width="320" height="48" rx="8" fill="#059669"/>
+    <text x="380" y="350" text-anchor="middle" font-size="15" fill="#fff">NVFP4 · 4 bit · 本实验 R2/R3 低精度路径</text>
+  </g>
+
+  <text x="80" y="400" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#374151">← 更精确、通常更慢</text>
+  <text x="680" y="400" text-anchor="end" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#374151">更快、更省显存 →</text>
+</svg>
