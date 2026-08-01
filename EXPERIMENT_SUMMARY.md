@@ -15,9 +15,12 @@
 
 Scope：block Linear；`embed` + `lm_head` 高精度。
 
-脚本：`02_train_bf16`（R1/R2）→ `03_train_nvfp4`（R3）→ `05_eval_ppl --routes R1,R2,R3`。
+脚本：`02_train_bf16`（R1/R2）→ `03_train_nvfp4`（R3）→ `05_eval_ppl --routes R1,R2,R3`。  
+全流程 / 断点续跑：`scripts/run_full_r123.sh`、`scripts/run_resume_r123.sh`。
 
-## 2. 质量（WikiText-2 PPL）— seed42 from-scratch · 2026-07-23
+## 2. 质量（WikiText-2 PPL）
+
+### Seed 42（2026-07-23）
 
 | 路线 | Train | Infer | PPL | vs R1 |
 |------|-------|-------|-----|------:|
@@ -25,31 +28,55 @@ Scope：block Linear；`embed` + `lm_head` 高精度。
 | R2 | BF16 | TE NVFP4 | **54.07** | 1.04× |
 | R3 | TE NVFP4 | TE NVFP4 | **53.32** | 1.03× |
 
-解读：R3（NVFP4 训练）略好于 R2（BF16 权重 + NVFP4 推理）；相对 R1 约 +1.4 / +2.1 PPL。
+报告：`results/main_360m/seed_42/full_report.md`
 
-报告：`results/main_360m/seed_42/full_report.md`  
-指标：`results/main_360m/seed_42/metrics.json`
+### Seed 43（2026-08-01）
 
-## 3. 性能（tokens/s）— GB200 · NGC 26.06 · TE 2.16 · **trained ckpts**
+| 路线 | Train | Infer | PPL | vs R1 |
+|------|-------|-------|-----|------:|
+| R1 | BF16 | FP16 | **37.07** | 1.00× |
+| R2 | BF16 | TE NVFP4 | **40.08** | 1.08× |
+| R3 | TE NVFP4 | TE NVFP4 | **39.62** | 1.07× |
 
-### 3.1 1×GPU 打满（best，seq=512）
+报告：`results/main_360m/seed_43/full_report.md`
 
-| Route / path | Phase | bs | tokens/s | vs R1 same phase |
-|--------------|-------|---:|---------:|-----------------:|
-| R1 bf16/fp16 | train | 192 | **174672** | 1.00× |
-| R1 fp16 | infer | 192 | **524557** | 1.00× |
-| R3 te_nvfp4 | train | 192 | **156553** | 0.90× |
-| R2 te_nvfp4 | infer | 192 | **444015** | 0.85× |
-| R3 te_nvfp4 | infer | 192 | **443179** | 0.84× |
+### 跨 seed 解读
 
-### 3.2 4×GPU DDP train（best）
+- 两 seed 均：**R3（NVFP4 训）略好于 R2（BF16 权 + NVFP4 推）**。  
+- 相对 R1：PPL 有小幅上升（seed42 ~+1–2，seed43 ~+2.5–3）。  
+- 绝对 PPL 对 random seed 敏感（42 vs 43 差距大），**路线相对序一致**。
 
-| Route | bs/gpu | tokens/s | vs R1 |
-|-------|-------:|---------:|------:|
-| R1 bf16 | 192 | **688153** | 1.00× |
-| R3 te_nvfp4 | 192 | **616741** | 0.90× |
+## 3. 性能（tokens/s）— GB200 · NGC 26.06 · TE · **trained ckpts**
 
-稳态训练日志（jsonl 后 20%）：BF16 ~**555k** tok/s；NVFP4 ~**448k** tok/s（4GPU 实训）。
+### 3.1 Seed 42 — 1×GPU / 4×GPU
+
+| Route / path | Phase | nGPU | bs | tokens/s | vs R1 |
+|--------------|-------|-----:|---:|---------:|------:|
+| R1 bf16/fp16 | train | 1 | 192 | **174672** | 1.00× |
+| R1 fp16 | infer | 1 | 192 | **524557** | 1.00× |
+| R3 te_nvfp4 | train | 1 | 192 | **156553** | 0.90× |
+| R2 te_nvfp4 | infer | 1 | 192 | **444015** | 0.85× |
+| R3 te_nvfp4 | infer | 1 | 192 | **443179** | 0.84× |
+| R1 bf16 | train | 4 | 192 | **688153** | 1.00× |
+| R3 te_nvfp4 | train | 4 | 192 | **616741** | 0.90× |
+
+稳态 jsonl（4GPU）：BF16 ~**555k**；NVFP4 ~**448k**。
+
+### 3.2 Seed 43 — 1×GPU / 4×GPU（seed-tagged benches）
+
+| Route / path | Phase | nGPU | bs | tokens/s | vs R1 |
+|--------------|-------|-----:|---:|---------:|------:|
+| R1 bf16/fp16 | train | 1 | 160 | **171657** | 1.00× |
+| R1 fp16 | infer | 1 | 192 | **521817** | 1.00× |
+| R3 te_nvfp4 | train | 1 | 192 | **155668** | 0.91× |
+| R2 te_nvfp4 | infer | 1 | 192 | **441062** | 0.85× |
+| R3 te_nvfp4 | infer | 1 | 192 | **440909** | 0.84× |
+| R1 bf16 | train | 4 | 192 | **681069** | 1.00× |
+| R3 te_nvfp4 | train | 4 | 192 | **602222** | 0.88× |
+
+稳态 jsonl（4GPU）：BF16 ~**573k**；NVFP4 ~**439k**。
+
+**吞吐结论：** NVFP4 训练约 R1 的 **0.85–0.90×**；NVFP4 推理约 R1 FP16 的 **0.84–0.85×**（两 seed 一致）。
 
 ## 4. 归档：软件 fake-quant（已删除）
 
@@ -58,8 +85,9 @@ Scope：block Linear；`embed` + `lm_head` 高精度。
 | 官方 FP16 / 软件 PTQ | 18.97 / 51.01 |
 | 从零 R1 / R2 / R3（软件 FQ） | 52.37 / 67.24 / 53.73 |
 
-## 5. 数据
+## 5. 数据与工程
 
-- Train: FineWeb-Edu `sample-10BT`  
+- Train: FineWeb-Edu `sample-10BT`（seed 相关 token 缓存）  
 - Eval: WikiText-2  
-- `data/`、`checkpoints/`、`results/` 不入 git  
+- `data/`、`checkpoints/`、`results/`、`logs/`、`snapshots/` 不入 git  
+- 断点：`checkpoints/seed_<N>/ckpt_*/resume/`；机器过期后 `SEED=N bash scripts/run_resume_r123.sh`  

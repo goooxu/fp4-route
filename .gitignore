@@ -20,6 +20,7 @@ checkpoints/
 artifact_backup/
 results/
 logs/
+snapshots/
 *.pt
 *.bin
 *.safetensors

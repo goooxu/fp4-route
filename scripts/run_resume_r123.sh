@@ -171,26 +171,30 @@ PY
   BC=/tmp/bench_r123.yaml
   WARM=3
   MEAS=8
+  # Seed-tag bench outputs so seed42/43 do not clobber each other
+  PTAG="seed${SEED}"
   CUDA_VISIBLE_DEVICES=0 python scripts/12_bench_throughput.py --config $BC --route R1 --phase train --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
-    --out results/perf/bench_R1_train_n1_best.json || true
+    --out results/perf/bench_R1_train_n1_${PTAG}_best.json || true
   CUDA_VISIBLE_DEVICES=0 python scripts/12_bench_throughput.py --config $BC --route R1 --phase infer --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
-    --out results/perf/bench_R1_infer_n1_best.json || true
+    --out results/perf/bench_R1_infer_n1_${PTAG}_best.json || true
   CUDA_VISIBLE_DEVICES=0 python scripts/12_bench_throughput.py --config $BC --route R2 --phase infer --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
-    --out results/perf/bench_R2_infer_n1_best.json || true
+    --out results/perf/bench_R2_infer_n1_${PTAG}_best.json || true
   CUDA_VISIBLE_DEVICES=0 python scripts/12_bench_throughput.py --config $BC --route R3 --phase train --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
-    --out results/perf/bench_R3_train_n1_best.json || true
+    --out results/perf/bench_R3_train_n1_${PTAG}_best.json || true
   CUDA_VISIBLE_DEVICES=0 python scripts/12_bench_throughput.py --config $BC --route R3 --phase infer --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
-    --out results/perf/bench_R3_infer_n1_best.json || true
+    --out results/perf/bench_R3_infer_n1_${PTAG}_best.json || true
   unset CUDA_VISIBLE_DEVICES
+  export CUDA_VISIBLE_DEVICES=0,1,2,3
   torchrun --standalone --nproc_per_node=$NPROC scripts/12_bench_throughput.py --config $BC --route R1 --phase train --ddp --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
-    --out results/perf/bench_R1_train_n${NPROC}_best.json || true
+    --out results/perf/bench_R1_train_n${NPROC}_${PTAG}_best.json || true
   torchrun --standalone --nproc_per_node=$NPROC scripts/12_bench_throughput.py --config $BC --route R3 --phase train --ddp --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
-    --out results/perf/bench_R3_train_n${NPROC}_best.json || true
+    --out results/perf/bench_R3_train_n${NPROC}_${PTAG}_best.json || true
 else
   echo "[skip] bench"
 fi
 
 echo "===== write full_report ====="
+export PYTHONPATH=/work
 python scripts/write_full_report.py --seed "$SEED" --config "$CFG" || true
 echo "===== RESUME R123 DONE $(date -Is) ====="
 ' 2>&1 | tee -a "$LOG"
