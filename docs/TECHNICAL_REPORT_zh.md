@@ -31,6 +31,25 @@
 2. 相对 R1，R2/R3 的 PPL 有**小幅上升**（约 +3%～+8% 相对）。  
 3. 在本 **360M 规模** 设置下，NVFP4 训练约 **0.88–0.91×** R1 吞吐，推理约 **0.84–0.85×**——**尚未拿到理论加速**，原因见第 8 章。
 
+### 生成样例速览（比 PPL 更直观）
+
+下面摘自 **seed=42** 训完权重的续写（`temperature=0.8`，`top_p=0.9`，约 64 个新 token）。  
+模型仅约 360M、从零训约 7B tokens，**不是**产品级聊天模型：能写出「看起来像英文」的句子，但事实错误、重复、跑题很常见。这与 WikiText-2 PPL 仍偏高是一致的。
+
+| 提示 | R1（BF16 训推） | R2（BF16 权 + NVFP4 推） | R3（NVFP4 训推） |
+|------|-----------------|---------------------------|------------------|
+| *The capital of France is* | Paris. It is the largest city in France…（后文把位置、帝国搞混） | Paris.…（后文国旗年份等混乱） | Paris. 随后错误罗列各国首都（美/德/日等） |
+| *Photosynthesis is the process by which* | 错成人体分解碳水化合物… | a plant produces energy from sunlight.（开头对，后文跑偏） | plants … use light to produce food.（相对最贴题） |
+| *The history of artificial intelligence began* | when the 1960s… 虚构 IBM 机型… | late 1960s… 出现 “Nokia” 等胡编 | early 1990s… 笼统谈 machine learning |
+
+**读法建议：**
+
+1. **三路都能续写通顺的英文形态** → 训练确实学到了语言表面规律。  
+2. **事实与逻辑仍弱** → 规模/数据预算远未到可靠知识。  
+3. **R1/R2/R3 差异是「都在胡说，胡说方式略不同」**，不宜用单条生成判定路线优劣；定量仍以 **PPL 表** 为准。  
+
+完整 5 条 prompt × 3 路线原文见 [`generation_samples_seed42.md`](generation_samples_seed42.md)（可用 `scripts/13_generate_samples.py` 复现）。
+
 ---
 
 ## 1. 背景：从「精度」说起
@@ -516,6 +535,7 @@ results/perf/bench_*_seed<N>_best.json
 | `04_export_nvfp4_from_resume.py` | 从 resume 导出 R3 HF 权重 |
 | `05_eval_ppl.py` | R1/R2/R3 PPL |
 | `12_bench_throughput.py` | 吞吐 microbench |
+| `13_generate_samples.py` | R1/R2/R3 定性续写样例 |
 | `run_full_r123.sh` / `run_resume_r123.sh` | 编排 |
 | `mxfp4_lib/te_linear.py` | TE 替换 / recipe / revert |
 | `mxfp4_lib/train_loop.py` | 统一训练循环 |

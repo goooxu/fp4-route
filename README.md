@@ -49,7 +49,8 @@ Configs: `configs/smoke_135m.yaml`, `configs/main_360m.yaml`, `configs/bench_360
 Key numbers: `EXPERIMENT_SUMMARY.md` / `RUN_STATUS.md` (`results/` gitignored).  
 Seeds **42** and **43** from-scratch mainline are **complete** (see summary).
 
-**中文技术报告（入门可读）：** [`docs/TECHNICAL_REPORT_zh.md`](docs/TECHNICAL_REPORT_zh.md)（配图为 SVG，见 `docs/figures/`）。
+**中文技术报告（入门可读）：** [`docs/TECHNICAL_REPORT_zh.md`](docs/TECHNICAL_REPORT_zh.md)（配图为 SVG，见 `docs/figures/`）。  
+**生成样例（seed42）：** [`docs/generation_samples_seed42.md`](docs/generation_samples_seed42.md)（`scripts/13_generate_samples.py`）。
 
 ## Layout
 
