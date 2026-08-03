@@ -22,6 +22,9 @@
 - Recipe selection: `get_recipe("nvfp4"|"mxfp8")` (explicit; not auto-prefer)  
 - Legacy pure-English 26.06 runs backed up as `*_legacy_en_2606_*`  
 
+
+**Active host (session):** moved to new GPU node for machine reclaim; resume via NFS `save_every` / re-prefetch mix73 if data incomplete.
+
 ## Seed 42 / 43 (mix73 + 26.07) — IN PROGRESS
 
 | Stage | Status |
