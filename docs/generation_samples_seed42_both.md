@@ -1,75 +1,47 @@
-# fp4-route
+# Generation samples (model seed=42, gen_seed=0, max_new_tokens=64, lang=en+zh)
 
-Compare **three train/infer routes** on a causal LM using **hardware TE NVFP4**.
+Sampling: `do_sample=True`, temperature=0.8, top_p=0.9.
 
-| Route | Train | Infer |
-|-------|-------|-------|
-| **R1** | From-scratch BF16 | BF16 |
-| **R2** | Same BF16 checkpoint | TE **NVFP4** (block Linears) |
-| **R3** | TE **NVFP4** train (block Linears) | TE **NVFP4** |
+每条：**完整输入（prompt）** + 各路线 **完整输出（prompt+续写）**。
 
-**Quant scope:** transformer-block `Linear` only; `embed_tokens` + `lm_head` stay high precision.
+> 训练数据为英文 FineWeb-Edu；中文续写预期很差（乱码/重复），仅作对照。
 
-Architecture: [`HuggingFaceTB/SmolLM2-360M`](https://huggingface.co/HuggingFaceTB/SmolLM2-360M) via `from_config` (random init, ~362M).  
-Train: FineWeb-Edu ~7B tokens. Eval: WikiText-2 **PPL** + throughput (tokens/s) + **generation samples**.
+## 例 1（English）
 
-**Requires Transformer Engine (NVFP4)** — use:
-
-```text
-nvcr.io/nvidia/pytorch:26.06-py3
-```
-
-**中文技术报告：** [`docs/TECHNICAL_REPORT_zh.md`](docs/TECHNICAL_REPORT_zh.md)（SVG 配图见 `docs/figures/`）。  
-**结果摘要：** [`EXPERIMENT_SUMMARY.md`](EXPERIMENT_SUMMARY.md) · [`RUN_STATUS.md`](RUN_STATUS.md)。  
-Seeds **42** / **43** 主线已跑完。
-
----
-
-## 生成样例（seed=42，完整输入 / 输出）
-
-模型仅约 360M、英文 FineWeb 从零训练约 7B tokens：**不是**产品级模型。  
-英文续写可读但常事实错误；**中文几乎不可用**（词表/语料偏英文），下列中文样例仅作对照。
-
-- 采样：`temperature=0.8`, `top_p=0.9`, `max_new_tokens=64`, `gen_seed=0`
-- 复现：`SEED=42 LANG=both bash scripts/run_generate_samples.sh`
-- 全量文件：[`docs/generation_samples_seed42_both.md`](docs/generation_samples_seed42_both.md)
-
-### 英文例 1
-
-**输入**
+**输入（prompt）**
 
 ```text
 The history of artificial intelligence began
 ```
 
-**R1 完整输出**
+**R1 完整输出** (`bf16`)
 
 ```text
 The history of artificial intelligence began when the 1960s. The first artificial intelligence was the 1963 IBM 5480 computer. It was a single-machine algorithm, which was able to make predictions and then produce a plan.
 However, the 1960s saw a shift in the field
 ```
 
-**R2 完整输出**
+**R2 完整输出** (`te_NVFP4BlockScaling(bf16_ckpt,blocks=224)`)
 
 ```text
 The history of artificial intelligence began in the late 1960s with the arrival of the computer scientists and the computer scientists themselves. In the early 1970s, computers were presented as a single unit and were very useful in certain situations. They were called the Nokia. The name was chosen because the computer scientists,
 ```
 
-**R3 完整输出**
+**R3 完整输出** (`te_NVFP4BlockScaling(nvfp4_ckpt,blocks=224)`)
 
 ```text
 The history of artificial intelligence began in the early 1990s, when there was a new form of machine learning that allowed machines to learn quickly. This process allowed computers to learn by using automatic processes, so that machines could learn quickly. These days, there are still a lot of applications in the computer industry that can use machine learning,
 ```
 
-### 英文例 2
+## 例 2（English）
 
-**输入**
+**输入（prompt）**
 
 ```text
 In mathematics, a prime number is
 ```
 
-**R1 完整输出**
+**R1 完整输出** (`bf16`)
 
 ```text
 In mathematics, a prime number is a set of numbers that can be divided by itself to determine the product of two numbers.
@@ -79,7 +51,7 @@ In mathematics, a prime number is a set of numbers that can be divided by itself
 - The second number is the
 ```
 
-**R2 完整输出**
+**R2 完整输出** (`te_NVFP4BlockScaling(bf16_ckpt,blocks=224)`)
 
 ```text
 In mathematics, a prime number is any number which is not a prime number.
@@ -89,22 +61,22 @@ In the modern world, a prime number is a number that is not a prime number.
 In
 ```
 
-**R3 完整输出**
+**R3 完整输出** (`te_NVFP4BlockScaling(nvfp4_ckpt,blocks=224)`)
 
 ```text
 In mathematics, a prime number is a number of numbers that have the same as the first or second and is therefore called a prime number. In the case of the prime number, a prime number is a number that has the same as the first or second and is thus called a prime number. The prime number is an important part of math.
 If
 ```
 
-### 英文例 3
+## 例 3（English）
 
-**输入**
+**输入（prompt）**
 
 ```text
 Photosynthesis is the process by which
 ```
 
-**R1 完整输出**
+**R1 完整输出** (`bf16`)
 
 ```text
 Photosynthesis is the process by which cells in the body break down carbohydrates. It is an important part of the body's energy production. The brain, liver and kidneys are the main sources of energy for the body.
@@ -113,7 +85,7 @@ The body needs carbohydrates to function properly.
 The brain is a very important
 ```
 
-**R2 完整输出**
+**R2 完整输出** (`te_NVFP4BlockScaling(bf16_ckpt,blocks=224)`)
 
 ```text
 Photosynthesis is the process by which a plant produces energy from sunlight.
@@ -124,263 +96,198 @@ Here are the different types of photosynthesis:
 1. Soil-
 ```
 
-**R3 完整输出**
+**R3 完整输出** (`te_NVFP4BlockScaling(nvfp4_ckpt,blocks=224)`)
 
 ```text
 Photosynthesis is the process by which plants and other organisms use light to produce food. It is also the most energy-intensive of all the chemical reactions that happen in the Earth’s atmosphere. Plants use a variety of resources to produce energy, from nitrogen and oxygen to sunlight and carbon dioxide. But, because of a complex chemistry, the amount of light
 ```
 
-### 英文例 4
+## 例 4（English）
 
-**输入**
+**输入（prompt）**
 
 ```text
 The capital of France is
 ```
 
-**R1 完整输出**
+**R1 完整输出** (`bf16`)
 
 ```text
 The capital of France is Paris. It is the largest city in France and the sixth largest in the world. It is located on the southern end of the Alps. It is the capital of the Kingdom of France.
 The City of Paris is also known as the City of the Holy Roman Empire or the City of the Holy Roman Empire. It
 ```
 
-**R2 完整输出**
+**R2 完整输出** (`te_NVFP4BlockScaling(bf16_ckpt,blocks=224)`)
 
 ```text
 The capital of France is Paris. The capital of the Italian and French nations is Paris. The city of Paris has the most beautiful buildings of any city in the world. It is the city of the French people.
 The French flag was chosen on 10 January 1802, at the height of the French Revolution. The
 ```
 
-**R3 完整输出**
+**R3 完整输出** (`te_NVFP4BlockScaling(nvfp4_ckpt,blocks=224)`)
 
 ```text
 The capital of France is Paris. The capital of the United States is New York. The capital of Switzerland is Berlin. The capital of Germany is Warsaw. The capital of Germany is Prague. The capital of Greece is Athens. The capital of Japan is Kyoto. The capital of Israel is Baghdad. The capital of Turkey is Cairo. The capital of
 ```
 
-### 英文例 5
+## 例 5（English）
 
-**输入**
+**输入（prompt）**
 
 ```text
 Once upon a time, in a small village,
 ```
 
-**R1 完整输出**
+**R1 完整输出** (`bf16`)
 
 ```text
 Once upon a time, in a small village, a little girl of the village was asked by a farmer to put a tree in the field. She told the farmer, “It is the first time that you have put an object in the field.” The farmer replied, “The tree is there, but you can see it by the way it is put in the field
 ```
 
-**R2 完整输出**
+**R2 完整输出** (`te_NVFP4BlockScaling(bf16_ckpt,blocks=224)`)
 
 ```text
 Once upon a time, in a small village, in a town, in a community, or in a town, you would often find that the mother was a lady who had been married to a man and had married a woman. That’s the reason why we do have the following question: If the woman had been married to a man, who had the right to
 ```
 
-**R3 完整输出**
+**R3 完整输出** (`te_NVFP4BlockScaling(nvfp4_ckpt,blocks=224)`)
 
 ```text
 Once upon a time, in a small village, in a little village, a group of residents who had fled to the countryside as their families were already in their own houses, with their village’s houses, with their boys’ houses, with their boys’ houses, and their father’s houses, they gathered together in the same place, where there was a group
 ```
 
-### 中文例 1
+## 例 6（中文）
 
-**输入**
+**输入（prompt）**
 
 ```text
 人工智能的历史始于
 ```
 
-**R1 完整输出**
+**R1 完整输出** (`bf16`)
 
 ```text
 人工智能的历史始于色范程污河的界空色梅柅與閙花感的萡態的河界色悴�
 ```
 
-**R2 完整输出**
+**R2 完整输出** (`te_NVFP4BlockScaling(bf16_ckpt,blocks=224)`)
 
 ```text
 人工智能的历史始于語語年历語的淸詴渮驳的六智的ffect代宺渮句丟硐隯和家的系木英�
 ```
 
-**R3 完整输出**
+**R3 完整输出** (`te_NVFP4BlockScaling(nvfp4_ckpt,blocks=224)`)
 
 ```text
 人工智能的历史始于誌意你科機側諄教的洱誌想側諄国側矿葬壏不。
 Awful for the love of God, but
 ```
 
-### 中文例 2
+## 例 7（中文）
 
-**输入**
+**输入（prompt）**
 
 ```text
 在数学中，质数是
 ```
 
-**R1 完整输出**
+**R1 完整输出** (`bf16`)
 
 ```text
-在数学中，质数是色范，鑵沒的熊的的縢也的先中情，意百柍的基民父的英肉灣，�
+在数学中，质数是色范，欟沒的熊的的縢也的先中情，意百柍的基民父的英肉灣，�
 ```
 
-**R2 完整输出**
+**R2 完整输出** (`te_NVFP4BlockScaling(bf16_ckpt,blocks=224)`)
 
 ```text
 在数学中，质数是城育中合二语韹說umni，頃安验，全氣趂，城晭苑的其讻，韭疑石�
 ```
 
-**R3 完整输出**
+**R3 完整输出** (`te_NVFP4BlockScaling(nvfp4_ckpt,blocks=224)`)
 
 ```text
 在数学中，质数是的源軙体的組堙。紴軋节江淅紴軟育全书，住商讥胰商誟�
 ```
 
-### 中文例 3
+## 例 8（中文）
 
-**输入**
+**输入（prompt）**
 
 ```text
 光合作用是指植物
 ```
 
-**R1 完整输出**
+**R1 完整输出** (`bf16`)
 
 ```text
-光合作用是指植物色賜，鑵沒沉界無义台小情興門节感的萂態的没界色节�
+光合作用是指植物色賜，欟沒沉界無义台小情興門节感的萂態的没界色节�
 ```
 
-**R2 完整输出**
+**R2 完整输出** (`te_NVFP4BlockScaling(bf16_ckpt,blocks=224)`)
 
 ```text
-光合作用是指植物，想系年REC OF PRODUCTION Ping Pong Sui-Wong Tzu-Ji Wang Yong-Ji Sui-Wong Su
+光合作用是指植物，想系年REC OF PRODUCTION
+Ping Pong Sui-Wong Tzu-Ji
+Wang Yong-Ji Sui-Wong Sui-Ji Sui-Wong Pong Sui-Ji Sui-Ji
 ```
 
-**R3 完整输出**
+**R3 完整输出** (`te_NVFP4BlockScaling(nvfp4_ckpt,blocks=224)`)
 
 ```text
 光合作用是指植物，治江合Instance涱勍的调貌詰灣涱治浡象口守植物，文口韯艸発�
 ```
 
-### 中文例 4
+## 例 9（中文）
 
-**输入**
+**输入（prompt）**
 
 ```text
 法国的首都是
 ```
 
-**R1 完整输出**
+**R1 完整输出** (`bf16`)
 
 ```text
 法国的首都是色色色色色色疸色色色色色色色色疸色色色色色�
 ```
 
-**R2 完整输出**
+**R2 完整输出** (`te_NVFP4BlockScaling(bf16_ckpt,blocks=224)`)
 
 ```text
-法国的首都是首高询密談勚詞*無镏次晼部灶首高主裕，詣禯的稁清�
+法国的首都是首高询密談勚詞\*無镏次晼部灶首高主裕，詣禯的稁清�
 ```
 
-**R3 完整输出**
+**R3 完整输出** (`te_NVFP4BlockScaling(nvfp4_ckpt,blocks=224)`)
 
 ```text
 法国的首都是英英一平关一韻一看版，畟畟畟畟畟韻畟畟英事Ｂ英事三間�
 ```
 
-### 中文例 5
+## 例 10（中文）
 
-**输入**
+**输入（prompt）**
 
 ```text
 很久很久以前，在一个小村庄里，
 ```
 
-**R1 完整输出**
+**R1 完整输出** (`bf16`)
 
 ```text
-很久很久以前，在一个小村庄里，色通。 - 中區場久的的一語，台小永说的門节感的菡態的永说。 - 仁�
+很久很久以前，在一个小村庄里，色通。
+- 中區場久的的一語，台小永说的門节感的菡態的永说。
+- 仁�
 ```
 
-**R2 完整输出**
+**R2 完整输出** (`te_NVFP4BlockScaling(bf16_ckpt,blocks=224)`)
 
 ```text
 很久很久以前，在一个小村庄里，郎eno，滀法 bedroom，位，欈足的的胍的，富。郏PASdream，他。舏镆的英他歷，郎 missile，僎�
 ```
 
-**R3 完整输出**
+**R3 完整输出** (`te_NVFP4BlockScaling(nvfp4_ckpt,blocks=224)`)
 
 ```text
 很久很久以前，在一个小村庄里，的清清清清清清清清清清清清清清清清清清清清清
 ```
 
----
-
-## Quick start
-
-```bash
-# Inside NGC PyTorch container:
-bash scripts/00_setup_remote.sh   # optional host venv for data prep
-source venv/bin/activate          # optional
-
-# Smoke 135M — full R1/R2/R3
-NPROC=1 bash scripts/06_run_all.sh --config configs/smoke_135m.yaml --seed 42 --nproc 1
-
-# Mainline 360M from-scratch (full R1/R2/R3 + PPL + bench)
-NPROC=4 SEED=42 bash scripts/run_full_r123.sh
-# Or on GPU node / remote:
-# REMOTE_HOST=10.x.x.x NPROC=4 SEED=42 bash scripts/run_resume_r123.sh --remote
-
-# Safe resume after machine reclaim (keeps checkpoints/seed_N; save_every=500)
-NPROC=4 SEED=43 bash scripts/run_resume_r123.sh
-
-# Generation samples (EN + ZH) for README / docs
-SEED=42 LANG=both MAX_NEW=64 bash scripts/run_generate_samples.sh
-
-# R3 HF export only (if TE final save failed but resume exists)
-python scripts/04_export_nvfp4_from_resume.py --seed 42
-
-# Throughput (bf16 = R1 train/infer; te_fp4 = R2/R3 infer path)
-IMG=nvcr.io/nvidia/pytorch:26.06-py3 bash scripts/run_bench_docker.sh
-IMG=nvcr.io/nvidia/pytorch:26.06-py3 NPROC=4 bash scripts/run_bench_max_ddp.sh
-```
-
-Configs: `configs/smoke_135m.yaml`, `configs/main_360m.yaml`, `configs/bench_360m.yaml`.
-
-## Layout
-
-```
-configs/       # smoke / main / bench
-mxfp4_lib/     # data, train_loop, te_linear (NVFP4), bench
-docs/          # TECHNICAL_REPORT_zh.md, figures/*.svg, generation samples
-scripts/
-  02_train_bf16.py          # R1/R2 shared BF16 train
-  03_train_nvfp4.py         # R3 TE NVFP4 train
-  04_export_nvfp4_from_resume.py
-  05_eval_ppl.py            # R1 + R2 + R3 WikiText-2 PPL
-  13_generate_samples.py    # qualitative generation (EN/ZH)
-  06_run_all.sh             # legacy full pipeline
-  run_full_r123.sh          # from-scratch orchestration (NGC docker)
-  run_resume_r123.sh        # durable resume (no seed_* rename)
-  run_finish_r123.sh        # export/PPL/bench after train
-  12_bench_throughput.py / run_bench_*.sh
-```
-
-## Checkpoints
-
-```
-checkpoints/seed_<N>/
-  init_model/
-  ckpt_bf16/      # R1 weights; also used for R2 infer
-  ckpt_nvfp4/     # R3 weights (saved as nn.Linear after TE train)
-```
-
-## Remote
-
-```bash
-python3 scripts/remote_run.py --check
-REMOTE_HOST=10.x.x.x bash scripts/stage_to_gpu.sh
-```
-
-Do not commit GPU IPs or bulky `data/` / `checkpoints/` / `results/`.

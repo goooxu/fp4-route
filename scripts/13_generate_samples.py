@@ -32,6 +32,15 @@ DEFAULT_PROMPTS = [
     "Once upon a time, in a small village,",
 ]
 
+# Chinese prompts (model is English-pretrained FineWeb; quality expected to be weak)
+DEFAULT_PROMPTS_ZH = [
+    "人工智能的历史始于",
+    "在数学中，质数是",
+    "光合作用是指植物",
+    "法国的首都是",
+    "很久很久以前，在一个小村庄里，",
+]
+
 
 def _pad_to_multiple(ids: torch.Tensor, attn: torch.Tensor, *, multiple: int, pad_id: int):
     """Pad seq dim so B*S is divisible by `multiple` (TE NVFP4 / FP8 constraint)."""
@@ -151,6 +160,13 @@ def main():
     ap.add_argument("--routes", default="R1,R2,R3")
     ap.add_argument("--max-new-tokens", type=int, default=80)
     ap.add_argument("--gen-seed", type=int, default=0, help="sampling RNG seed for reproducibility")
+    ap.add_argument(
+        "--lang",
+        default="en",
+        choices=["en", "zh", "both"],
+        help="prompt set: English / Chinese / both",
+    )
+    ap.add_argument("--out-suffix", default="", help="optional suffix for output filenames")
     args = ap.parse_args()
 
     cfg = load_cfg(args.config, seed=args.seed)
@@ -160,18 +176,35 @@ def main():
     if device.type != "cuda":
         raise SystemExit("CUDA required")
 
-    prompts = list(DEFAULT_PROMPTS)
-    # optional config prompt first
+    prompts = []
+    if args.lang in ("en", "both"):
+        prompts.extend(DEFAULT_PROMPTS)
+    if args.lang in ("zh", "both"):
+        prompts.extend(DEFAULT_PROMPTS_ZH)
+    # optional config prompt first (English)
     gen_prompt = (cfg.get("eval") or {}).get("gen_prompt")
-    if gen_prompt and gen_prompt not in prompts:
-        prompts = [gen_prompt] + prompts
+    if gen_prompt and gen_prompt not in prompts and args.lang in ("en", "both"):
+        prompts = [gen_prompt] + [p for p in prompts if p != gen_prompt]
 
-    # load_cfg with isolate_seed_paths already points results at .../seed_<N>
-    res = Path(cfg["paths"]["results"])
-    if res.name == f"seed_{args.seed}":
-        out_dir = ensure_dir(res)
+    # Prefer logs/ (usually a+rwX on NFS; docker root may be root-squashed on docs/)
+    root = Path(__file__).resolve().parents[1]
+    for cand in (root / "logs", root / "docs", Path("/tmp")):
+        try:
+            out_dir = ensure_dir(cand)
+            probe = out_dir / f".write_probe_{args.seed}"
+            probe.write_text("ok")
+            probe.unlink()
+            break
+        except OSError:
+            continue
     else:
-        out_dir = ensure_dir(res / f"seed_{args.seed}")
+        out_dir = ensure_dir(Path("/tmp"))
+    tag = f"seed{args.seed}"
+    if args.out_suffix:
+        tag = f"{tag}_{args.out_suffix}"
+    elif args.lang != "en":
+        tag = f"{tag}_{args.lang}"
+    print(f"[gen] out_dir={out_dir} tag={tag}", flush=True)
     all_rows = []
 
     for route in [r.strip().upper() for r in args.routes.split(",") if r.strip()]:
@@ -194,32 +227,39 @@ def main():
         del model
         torch.cuda.empty_cache()
 
-    json_path = out_dir / "generation_samples.json"
+    json_path = out_dir / f"generation_samples_{tag}.json"
     with open(json_path, "w") as f:
         json.dump(all_rows, f, indent=2, ensure_ascii=False)
 
-    # markdown table-friendly dump
+    # markdown: full prompt + full model output (prompt + continuation)
     md_lines = [
-        f"# Generation samples (model seed={args.seed}, gen_seed={args.gen_seed}, max_new_tokens={args.max_new_tokens})",
+        f"# Generation samples (model seed={args.seed}, gen_seed={args.gen_seed}, max_new_tokens={args.max_new_tokens}, lang={args.lang})",
         "",
         "Sampling: `do_sample=True`, temperature=0.8, top_p=0.9.",
         "",
+        "Each block shows **完整输入（prompt）** and **完整输出（prompt + 续写）**.",
+        "",
     ]
-    # group by prompt
     by_prompt = {}
     for r in all_rows:
         by_prompt.setdefault(r["prompt"], []).append(r)
-    for prompt, rows in by_prompt.items():
-        md_lines.append(f"## Prompt")
+    for i, (prompt, rows) in enumerate(by_prompt.items(), 1):
+        md_lines.append(f"## 例 {i}")
         md_lines.append("")
-        md_lines.append(f"> {prompt}")
+        md_lines.append("**输入（prompt）**")
+        md_lines.append("")
+        md_lines.append("```text")
+        md_lines.append(prompt)
+        md_lines.append("```")
         md_lines.append("")
         for r in rows:
-            md_lines.append(f"**{r['route']}** (`{r['infer']}`):")
+            md_lines.append(f"**{r['route']} 完整输出** (`{r['infer']}`)")
             md_lines.append("")
-            md_lines.append(f"{r['continuation']}")
+            md_lines.append("```text")
+            md_lines.append(r.get("full") or (prompt + r.get("continuation", "")))
+            md_lines.append("```")
             md_lines.append("")
-    md_path = out_dir / "generation_samples.md"
+    md_path = out_dir / f"generation_samples_{tag}.md"
     md_path.write_text("\n".join(md_lines) + "\n", encoding="utf-8")
     print(f"[gen] wrote {json_path}")
     print(f"[gen] wrote {md_path}")
