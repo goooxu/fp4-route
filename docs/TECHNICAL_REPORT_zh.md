@@ -41,7 +41,7 @@
 | 光合作用是… | R1 错成人体内代谢；R3 相对最贴题 |
 | 人工智能的历史始于… | 三路年份与事实都不靠谱 |
 
-完整 **英文输入/输出 + 中文翻译** 见仓库首页 [`README.md`](../README.md) 与 [`generation_samples_seed42.md`](generation_samples_seed42.md)。  
+完整 **英文输入/输出 + 中文翻译** 见仓库首页 [`README.md`](../README.md)。  
 定量比较仍以 **PPL 表** 为准。
 
 ---
