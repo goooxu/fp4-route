@@ -181,10 +181,46 @@ def build_fineweb_token_buffer(
     budgets[-1] = target_tokens - sum(budgets[:-1])
 
     tmp = cache.with_suffix(".npy.tmp")
-    mm = np.lib.format.open_memmap(tmp, mode="w+", dtype=np.int32, shape=(target_tokens,))
+    progress_path = cache.with_suffix(".npy.progress.json")
+
+    # Resume multi-source pack if a previous run died after completing some sources.
+    # Progress sidecar records completed source slices; memmap is reopened r+ (not truncated).
+    start_i = 0
     offset = 0
-    actual_parts = []
-    for src, budget in zip(sources, budgets):
+    actual_parts: list[dict] = []
+    if tmp.exists() and progress_path.exists():
+        try:
+            with open(progress_path) as f:
+                prog = json.load(f)
+            if (
+                int(prog.get("target_tokens", -1)) == target_tokens
+                and prog.get("budgets") == budgets
+                and prog.get("cache_tag") == _cache_tag(cfg)
+                and int(prog.get("seed", -1)) == seed
+            ):
+                actual_parts = list(prog.get("actual_parts") or [])
+                start_i = len(actual_parts)
+                offset = int(prog.get("offset", 0))
+                if start_i > 0 and start_i <= len(sources) and offset == sum(budgets[:start_i]):
+                    print(
+                        f"[data] Resuming multi-source pack from source {start_i}/{len(sources)} "
+                        f"(offset={offset}) via {progress_path}",
+                        flush=True,
+                    )
+                else:
+                    start_i, offset, actual_parts = 0, 0, []
+            else:
+                print(f"[data] Progress sidecar mismatch — rebuilding {tmp}", flush=True)
+        except Exception as e:
+            print(f"[data] Progress sidecar unreadable ({e}) — rebuilding", flush=True)
+            start_i, offset, actual_parts = 0, 0, []
+
+    if start_i == 0:
+        mm = np.lib.format.open_memmap(tmp, mode="w+", dtype=np.int32, shape=(target_tokens,))
+    else:
+        mm = np.lib.format.open_memmap(tmp, mode="r+", dtype=np.int32)
+
+    for src, budget in zip(sources[start_i:], budgets[start_i:]):
         written = _stream_source_into_memmap(
             mm=mm,
             offset=offset,
@@ -197,8 +233,6 @@ def build_fineweb_token_buffer(
             cfg=cfg,
             label=f"{name}/{src.get('name', src['dataset'])}",
         )
-        # If short, leave zeros? Prefer compact: shift is complex; pad by re-using
-        # remaining budget from this source already tried. Record actual.
         actual_parts.append(
             {
                 "name": src.get("name"),
@@ -209,6 +243,20 @@ def build_fineweb_token_buffer(
             }
         )
         offset += budget
+        mm.flush()
+        with open(progress_path, "w") as f:
+            json.dump(
+                {
+                    "target_tokens": target_tokens,
+                    "seed": seed,
+                    "cache_tag": _cache_tag(cfg),
+                    "budgets": budgets,
+                    "offset": offset,
+                    "actual_parts": actual_parts,
+                },
+                f,
+                indent=2,
+            )
 
     mm.flush()
     del mm
@@ -235,6 +283,7 @@ def build_fineweb_token_buffer(
         tmp.replace(cache)
         actual = target_tokens
 
+    progress_path.unlink(missing_ok=True)
     meta = {
         "name": name,
         "target_tokens": target_tokens,

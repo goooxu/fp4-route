@@ -13,7 +13,7 @@ Compare **five train/infer routes** on a causal LM using hardware TE (**NVFP4** 
 **Quant scope:** transformer-block `Linear` only; `embed_tokens` + `lm_head` stay high precision.
 
 Architecture: [`HuggingFaceTB/SmolLM2-360M`](https://huggingface.co/HuggingFaceTB/SmolLM2-360M) via `from_config` (random init, ~362M).  
-Train data: **~7B tokens**, English FineWeb-Edu **70%** + Chinese FineWeb-2 (`zho_Hans`) **30%**.  
+Train data: **~7B tokens**, English FineWeb-Edu **70%** + Chinese FineWeb-2 (`cmn_Hani`) **30%**.  
 Eval: WikiText-2 **PPL** (English) + throughput + generation samples.
 
 **Requires Transformer Engine** — use `nvcr.io/nvidia/pytorch:26.07-py3`.

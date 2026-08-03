@@ -2,7 +2,7 @@
 
 > 五条路线：**R1 BF16** · **R2/R3 TE NVFP4** · **R4/R5 TE MXFP8**。  
 > 环境：`nvcr.io/nvidia/pytorch:26.07-py3`。  
-> 训练语料：总 ~7B tokens，**英文 FineWeb-Edu 70% + 中文 FineWeb-2 (`zho_Hans`) 30%**。
+> 训练语料：总 ~7B tokens，**英文 FineWeb-Edu 70% + 中文 FineWeb-2 (`cmn_Hani`) 30%**。
 
 ## 1. 五条路线
 

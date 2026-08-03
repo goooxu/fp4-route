@@ -22,7 +22,8 @@ data:
       fraction: 0.7
     - name: zh_fineweb2
       dataset: HuggingFaceFW/fineweb-2
-      config: zho_Hans
+      # FineWeb-2 uses ISO 639-3 + script (not BCP-47); Mandarin Han ≈ Simplified ZH
+      config: cmn_Hani
       text_column: text
       fraction: 0.3
   eval_dataset: Salesforce/wikitext

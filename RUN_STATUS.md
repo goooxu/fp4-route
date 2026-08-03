@@ -2,7 +2,7 @@
 
 **Stack:** **R1–R5** with TE **NVFP4** (R2/R3) + **MXFP8** (R4/R5)  
 **Image:** `nvcr.io/nvidia/pytorch:26.07-py3`  
-**Train data:** EN FineWeb-Edu 70% + ZH FineWeb-2 (`zho_Hans`) 30% · total ~7B tokens (`cache_tag=mix73_enzh`)  
+**Train data:** EN FineWeb-Edu 70% + ZH FineWeb-2 (`cmn_Hani`) 30% · total ~7B tokens (`cache_tag=mix73_enzh`)  
 **Host:** pass via `REMOTE_HOST` only (no IPs in git)
 
 ## Routes
