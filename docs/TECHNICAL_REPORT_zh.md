@@ -33,22 +33,16 @@
 
 ### 生成样例速览（比 PPL 更直观）
 
-下面摘自 **seed=42** 训完权重的续写（`temperature=0.8`，`top_p=0.9`，约 64 个新 token）。  
-模型仅约 360M、从零训约 7B tokens，**不是**产品级聊天模型：能写出「看起来像英文」的句子，但事实错误、重复、跑题很常见。这与 WikiText-2 PPL 仍偏高是一致的。
+**seed=42** 英文续写（`temperature=0.8`，约 64 new tokens）。模型约 360M、英文 FineWeb 从零 ~7B tokens：能写出「像英语」的句子，但事实错误、重复很常见。
 
-| 提示 | R1（BF16 训推） | R2（BF16 权 + NVFP4 推） | R3（NVFP4 训推） |
-|------|-----------------|---------------------------|------------------|
-| *The capital of France is* | Paris. It is the largest city in France…（后文把位置、帝国搞混） | Paris.…（后文国旗年份等混乱） | Paris. 随后错误罗列各国首都（美/德/日等） |
-| *Photosynthesis is the process by which* | 错成人体分解碳水化合物… | a plant produces energy from sunlight.（开头对，后文跑偏） | plants … use light to produce food.（相对最贴题） |
-| *The history of artificial intelligence began* | when the 1960s… 虚构 IBM 机型… | late 1960s… 出现 “Nokia” 等胡编 | early 1990s… 笼统谈 machine learning |
+| 提示（中文意译） | 直观感受 |
+|------------------|----------|
+| 法国的首都是… | 三路都能接出 Paris，但后文常胡编地理/他国首都 |
+| 光合作用是… | R1 错成人体内代谢；R3 相对最贴题 |
+| 人工智能的历史始于… | 三路年份与事实都不靠谱 |
 
-**读法建议：**
-
-1. **三路都能续写通顺的英文形态** → 训练确实学到了语言表面规律。  
-2. **事实与逻辑仍弱** → 规模/数据预算远未到可靠知识。  
-3. **R1/R2/R3 差异是「都在胡说，胡说方式略不同」**，不宜用单条生成判定路线优劣；定量仍以 **PPL 表** 为准。  
-
-完整 5 条 prompt × 3 路线原文见 [`generation_samples_seed42.md`](generation_samples_seed42.md)（可用 `scripts/13_generate_samples.py` 复现）。
+完整 **英文输入/输出 + 中文翻译** 见仓库首页 [`README.md`](../README.md) 与 [`generation_samples_seed42.md`](generation_samples_seed42.md)。  
+定量比较仍以 **PPL 表** 为准。
 
 ---
 
