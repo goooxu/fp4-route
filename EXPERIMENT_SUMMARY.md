@@ -1,20 +1,25 @@
-# R1 / R2 / R3 路线对比实验总结
+# R1–R5 路线对比实验总结
 
-> 三条路线 **R1 / R2 / R3**，低精度统一为 **Transformer Engine `NVFP4BlockScaling`**（硬件 Tensor Core）。  
-> 环境：`nvcr.io/nvidia/pytorch:26.06-py3`。
+> 五条路线：**R1 BF16** · **R2/R3 TE NVFP4** · **R4/R5 TE MXFP8**。  
+> 环境：`nvcr.io/nvidia/pytorch:26.07-py3`。  
+> 训练语料：总 ~7B tokens，**英文 FineWeb-Edu 70% + 中文 FineWeb-2 (`zho_Hans`) 30%**。
 
-## 1. 三条路线
+## 1. 五条路线
 
 | 路线 | 训练 | 推理 | 权重 |
 |------|------|------|------|
 | **R1** | BF16 从零 | BF16 | `ckpt_bf16` |
-| **R2** | 同 R1（共享 BF16 ckpt） | TE NVFP4（block Linear） | `ckpt_bf16` + 推理时 `te.Linear` |
+| **R2** | 同 R1 | TE NVFP4 | `ckpt_bf16` |
 | **R3** | TE NVFP4 从零 | TE NVFP4 | `ckpt_nvfp4` |
+| **R4** | 同 R1 | TE MXFP8 | `ckpt_bf16` |
+| **R5** | TE MXFP8 从零 | TE MXFP8 | `ckpt_mxfp8` |
 
 Scope：block Linear；`embed` + `lm_head` 高精度。
 
-脚本：`02_train_bf16`（R1/R2）→ `03_train_nvfp4`（R3）→ `05_eval_ppl --routes R1,R2,R3`。  
-全流程 / 断点续跑：`scripts/run_full_r123.sh`、`scripts/run_resume_r123.sh`。
+脚本：`02_train_bf16` → `03_train_nvfp4 --recipe nvfp4|mxfp8` → `05_eval_ppl --routes R1,R2,R3,R4,R5`。  
+编排：`scripts/run_resume_r123.sh`（`IMG=…:26.07-py3`）。
+
+> **注意：** 与历史「纯英文 + 26.06」结果的绝对 PPL **不可直接对比**；本栈内比较 R1–R5。
 
 ## 2. 质量（WikiText-2 PPL）
 

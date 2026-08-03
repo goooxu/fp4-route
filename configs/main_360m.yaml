@@ -1,5 +1,6 @@
-# Mainline: SmolLM2-360M, FineWeb-Edu ~7B tokens, dual seed via --seed + isolate
-# Hardware low-prec: Transformer Engine NVFP4
+# Mainline: SmolLM2-360M, EN+ZH ~7B tokens (7:3), dual seed via --seed + isolate
+# Hardware low-prec: TE NVFP4 (R2/R3) + TE MXFP8 (R4/R5)
+# Image: nvcr.io/nvidia/pytorch:26.07-py3
 seed: 42
 isolate_seed_paths: true
 
@@ -7,9 +8,23 @@ arch_model_id: HuggingFaceTB/SmolLM2-360M
 tokenizer_id: HuggingFaceTB/SmolLM2-360M
 
 data:
+  # Legacy single-source keys (used if sources unset)
   train_dataset: HuggingFaceFW/fineweb-edu
   train_dataset_config: sample-10BT
   text_column: text
+  # Multi-source mix: total target_tokens split by fraction (must sum ~1.0)
+  cache_tag: mix73_enzh
+  sources:
+    - name: en_fineweb
+      dataset: HuggingFaceFW/fineweb-edu
+      config: sample-10BT
+      text_column: text
+      fraction: 0.7
+    - name: zh_fineweb2
+      dataset: HuggingFaceFW/fineweb-2
+      config: zho_Hans
+      text_column: text
+      fraction: 0.3
   eval_dataset: Salesforce/wikitext
   eval_dataset_config: wikitext-2-raw-v1
   seq_len: 512
@@ -53,4 +68,5 @@ paths:
   init_model: checkpoints/init_model
   ckpt_bf16: checkpoints/ckpt_bf16
   ckpt_nvfp4: checkpoints/ckpt_nvfp4
+  ckpt_mxfp8: checkpoints/ckpt_mxfp8
   results: results/main_360m

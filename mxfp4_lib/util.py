@@ -39,6 +39,7 @@ def load_cfg(path: str | Path | None = None, seed: int | None = None) -> dict:
             "init_model",
             "ckpt_bf16",
             "ckpt_nvfp4",
+            "ckpt_mxfp8",
             "results",
         ):
             if key in paths:

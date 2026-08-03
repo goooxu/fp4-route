@@ -20,9 +20,8 @@ def te_available() -> bool:
         return False
 
 
-def get_preferred_recipe():
-    """Return (recipe, name) preferring NVFP4 → MXFP8 → DelayedScaling FP8."""
-    import transformer_engine.pytorch as te  # noqa: F401
+def _make_recipe(kind: str):
+    """Build TE recipe by kind: nvfp4 | mxfp8 | delayed."""
     from transformer_engine.common.recipe import (
         DelayedScaling,
         Format,
@@ -30,31 +29,52 @@ def get_preferred_recipe():
         NVFP4BlockScaling,
     )
 
-    candidates = [
-        ("NVFP4BlockScaling", NVFP4BlockScaling()),
-        ("MXFP8BlockScaling", MXFP8BlockScaling(fp8_format=Format.E4M3)),
-        ("DelayedScaling", DelayedScaling(fp8_format=Format.HYBRID)),
-    ]
+    k = kind.lower().replace("-", "").replace("_", "")
+    if k in ("nvfp4", "nvfp4blockscaling", "fp4"):
+        return NVFP4BlockScaling(), "NVFP4BlockScaling"
+    if k in ("mxfp8", "mxfp8blockscaling", "fp8mx"):
+        return MXFP8BlockScaling(fp8_format=Format.E4M3), "MXFP8BlockScaling"
+    if k in ("delayed", "delayedscaling", "fp8"):
+        return DelayedScaling(fp8_format=Format.HYBRID), "DelayedScaling"
+    raise ValueError(f"unknown TE recipe kind: {kind!r} (use nvfp4|mxfp8|delayed)")
+
+
+def _probe_recipe(recipe, name: str) -> bool:
+    import transformer_engine.pytorch as te
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type != "cuda":
         raise RuntimeError("TE recipes require CUDA")
+    try:
+        # Dims friendly to both NVFP4 and MXFP8 block constraints
+        lin = te.Linear(512, 512, bias=True).to(device).bfloat16()
+        x = torch.randn(64, 512, device=device, dtype=torch.bfloat16)
+        with te.autocast(enabled=True, recipe=recipe):
+            y = lin(x)
+        y.mean().backward()
+        del lin, x, y
+        torch.cuda.empty_cache()
+        print(f"[te] recipe {name} OK", flush=True)
+        return True
+    except Exception as e:
+        print(f"[te] recipe {name} failed: {type(e).__name__}: {e}", flush=True)
+        return False
 
-    # Use dims divisible by 32 (MXFP8 block) and realistic GEMM shapes for NVFP4
-    # (tiny 16x64 probes falsely fail NVFP4 cuBLAS algorithm selection).
-    for name, recipe in candidates:
-        try:
-            lin = te.Linear(512, 512, bias=True).to(device).bfloat16()
-            x = torch.randn(64, 512, device=device, dtype=torch.bfloat16)
-            with te.autocast(enabled=True, recipe=recipe):
-                y = lin(x)
-            y.mean().backward()
-            del lin, x, y
-            torch.cuda.empty_cache()
-            print(f"[te] recipe {name} OK", flush=True)
+
+def get_recipe(kind: str, *, probe: bool = True):
+    """Return (recipe, name) for an explicit kind: nvfp4 | mxfp8 | delayed."""
+    recipe, name = _make_recipe(kind)
+    if probe and not _probe_recipe(recipe, name):
+        raise RuntimeError(f"TE recipe {name} not usable on this GPU/build")
+    return recipe, name
+
+
+def get_preferred_recipe():
+    """Return (recipe, name) preferring NVFP4 → MXFP8 → DelayedScaling FP8."""
+    for kind in ("nvfp4", "mxfp8", "delayed"):
+        recipe, name = _make_recipe(kind)
+        if _probe_recipe(recipe, name):
             return recipe, name
-        except Exception as e:
-            print(f"[te] recipe {name} failed: {type(e).__name__}: {e}", flush=True)
-            continue
     raise RuntimeError("No TE low-precision recipe works on this GPU/build")
 
 
@@ -198,6 +218,7 @@ def revert_te_to_linear(model: nn.Module) -> int:
 __all__ = [
     "count_te_linears",
     "get_preferred_recipe",
+    "get_recipe",
     "make_te_autocast_ctx",
     "replace_linears_with_te",
     "revert_te_to_linear",

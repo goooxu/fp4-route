@@ -2,7 +2,7 @@
 # Re-eval PPL R1/R2/R3 + R1 infer bench with R1 = BF16 infer (no retrain).
 set -euo pipefail
 ROOT="${NFS_ROOT:-/home/scratch.gemsg_sw/grokbuild/mxfp4_route_compare}"
-IMG="${IMG:-nvcr.io/nvidia/pytorch:26.06-py3}"
+IMG="${IMG:-nvcr.io/nvidia/pytorch:26.07-py3}"
 TS=$(date +%Y%m%d_%H%M%S)
 LOG="${LOG:-$ROOT/logs/r1_bf16_infer_reeval_${TS}.log}"
 mkdir -p "$ROOT/logs"

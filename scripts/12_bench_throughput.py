@@ -69,17 +69,20 @@ def _is_main(rank: int) -> bool:
 
 
 def _resolve_route(route: str | None, backend: str, weights: str | None, phase: str):
-    """Map R1/R2/R3 to backend + weight source."""
+    """Map R1–R5 to backend + weight source."""
     if not route:
         return backend, (weights or "auto"), None
     r = route.upper()
     if r == "R1":
-        # train + infer both use bf16 compute
         return "bf16", "bf16", "R1"
     if r == "R2":
         return "te_fp4", "bf16", "R2"
     if r == "R3":
         return "te_fp4", "nvfp4", "R3"
+    if r == "R4":
+        return "te_mxfp8", "bf16", "R4"
+    if r == "R5":
+        return "te_mxfp8", "mxfp8", "R5"
     raise SystemExit(f"unknown route {route}")
 
 
@@ -91,10 +94,11 @@ def _build_model(
     weights: str = "auto",
     route_label: str | None = None,
 ):
-    """weights: auto|bf16|nvfp4|random — checkpoint source; backend: compute path."""
+    """weights: auto|bf16|nvfp4|mxfp8|random; backend: bf16|fp16|te_fp4|te_mxfp8."""
     init = Path(cfg["paths"].get("init_model", "checkpoints/init_model"))
     ckpt_bf16 = Path(cfg["paths"].get("ckpt_bf16", ""))
     ckpt_nvfp4 = Path(cfg["paths"].get("ckpt_nvfp4", ""))
+    ckpt_mxfp8 = Path(cfg["paths"].get("ckpt_mxfp8", ""))
     notes = []
     rank = int(os.environ.get("RANK", "0"))
     wsrc = (weights or "auto").lower()
@@ -104,11 +108,15 @@ def _build_model(
         load_path = ckpt_bf16
     elif wsrc == "nvfp4" and _has_weights(ckpt_nvfp4):
         load_path = ckpt_nvfp4
+    elif wsrc == "mxfp8" and _has_weights(ckpt_mxfp8):
+        load_path = ckpt_mxfp8
     elif wsrc == "auto":
         if _has_weights(ckpt_bf16):
             load_path = ckpt_bf16
         elif _has_weights(ckpt_nvfp4):
             load_path = ckpt_nvfp4
+        elif _has_weights(ckpt_mxfp8):
+            load_path = ckpt_mxfp8
         elif _has_weights(init):
             load_path = init
 
@@ -132,15 +140,16 @@ def _build_model(
         model = model.to(device=device, dtype=torch.bfloat16)
     elif backend == "fp16":
         model = model.to(device=device, dtype=torch.float16)
-    elif backend == "te_fp4":
+    elif backend in ("te_fp4", "te_mxfp8"):
         from mxfp4_lib.te_linear import (
-            get_preferred_recipe,
+            get_recipe,
             make_te_autocast_ctx,
             replace_linears_with_te,
         )
 
         model = model.to(device=device, dtype=torch.bfloat16)
-        recipe, recipe_name = get_preferred_recipe()
+        kind = "mxfp8" if backend == "te_mxfp8" else "nvfp4"
+        recipe, recipe_name = get_recipe(kind, probe=True)
         n = replace_linears_with_te(model, include_lm_head=False)
         notes.append(f"te_linears={n},recipe={recipe_name}")
         te_ctx = make_te_autocast_ctx(recipe)
@@ -203,7 +212,7 @@ def _try_bench_one(
             params = model.parameters()
             opt = torch.optim.AdamW(params, lr=float((cfg.get("train") or {}).get("lr", 3e-4)), weight_decay=0.0)
             amp = torch.bfloat16 if backend == "bf16" else None
-            if backend in ("te_fp4", "fp16"):
+            if backend in ("te_fp4", "te_mxfp8", "fp16"):
                 amp = None
             # DDP wraps model: forward via model() still works
             step_fn = make_train_step(model, opt, batch_t, amp_dtype=amp, te_ctx=te_ctx)
@@ -217,7 +226,7 @@ def _try_bench_one(
             )
 
         backend_label = backend
-        if backend == "te_fp4" and recipe_name:
+        if backend in ("te_fp4", "te_mxfp8") and recipe_name:
             backend_label = f"te_{recipe_name.replace('BlockScaling', '').lower()}"
         if route_label:
             backend_label = f"{route_label}_{backend_label}"
@@ -274,13 +283,21 @@ def _try_bench_one(
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/bench_360m.yaml")
-    ap.add_argument("--backend", default=None, choices=["bf16", "fp16", "te_fp4"])
+    ap.add_argument(
+        "--backend",
+        default=None,
+        choices=["bf16", "fp16", "te_fp4", "te_mxfp8"],
+    )
     ap.add_argument("--phase", required=True, choices=["train", "infer"])
-    ap.add_argument("--route", default=None, choices=["R1", "R2", "R3", "r1", "r2", "r3"])
+    ap.add_argument(
+        "--route",
+        default=None,
+        choices=["R1", "R2", "R3", "R4", "R5", "r1", "r2", "r3", "r4", "r5"],
+    )
     ap.add_argument(
         "--weights",
         default=None,
-        choices=["auto", "bf16", "nvfp4", "random"],
+        choices=["auto", "bf16", "nvfp4", "mxfp8", "random"],
         help="Checkpoint source (default from --route)",
     )
     ap.add_argument("--batch-size", type=int, default=None)

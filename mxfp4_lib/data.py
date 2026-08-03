@@ -35,7 +35,11 @@ def tokenize_wikitext(data_dir: Path, tok: AutoTokenizer, split: str = "train") 
     return enc["input_ids"].view(-1)
 
 
-def _cache_path(data_dir: Path, name: str, target_tokens: int, seed: int) -> Path:
+def _cache_tag(cfg: dict) -> str:
+    return str(cfg.get("data", {}).get("cache_tag") or "default")
+
+
+def _cache_path(data_dir: Path, name: str, target_tokens: int, seed: int, cfg: dict | None = None) -> Path:
     # Prefer compact int32 memmap (.npy); keep .pt as legacy fallback
     # Optional node-local override (cold NFS nodes): LOCAL_TRAIN_NPY / LOCAL_VAL_NPY
     import os
@@ -48,6 +52,9 @@ def _cache_path(data_dir: Path, name: str, target_tokens: int, seed: int) -> Pat
         local = os.environ.get("LOCAL_VAL_NPY", "").strip()
         if local and Path(local).exists():
             return Path(local)
+    tag = _cache_tag(cfg or {})
+    if tag and tag != "default":
+        return Path(data_dir) / "fineweb_edu" / f"{name}_tok{target_tokens}_{tag}_seed{seed}.npy"
     return Path(data_dir) / "fineweb_edu" / f"{name}_tok{target_tokens}_seed{seed}.npy"
 
 
@@ -55,70 +62,51 @@ def _legacy_pt_path(data_dir: Path, name: str, target_tokens: int, seed: int) ->
     return Path(data_dir) / "fineweb_edu" / f"{name}_tok{target_tokens}_seed{seed}.pt"
 
 
-def build_fineweb_token_buffer(
-    cfg: dict,
-    tok: AutoTokenizer,
+def _stream_source_into_memmap(
     *,
-    target_tokens: int,
-    name: str,
+    mm: np.memmap,
+    offset: int,
+    limit: int,
+    tok: AutoTokenizer,
+    ds_name: str,
+    ds_config: str | None,
+    text_col: str,
     seed: int,
-) -> torch.Tensor:
-    """
-    Stream FineWeb-Edu, tokenize, write int32 tokens to a memmap until target_tokens.
-    Low-RAM: does not keep all chunks in a Python list.
-    """
-    data_dir = Path(cfg["paths"]["data_dir"])
-    cache = _cache_path(data_dir, name, target_tokens, seed)
-    legacy = _legacy_pt_path(data_dir, name, target_tokens, seed)
-    if cache.exists():
-        print(f"[data] Loading memmap tokens from {cache}")
-        arr = np.load(cache, mmap_mode="r")
-        # Keep int32 memmap; Dataset casts to long per batch
-        return torch.from_numpy(arr)
-    if legacy.exists():
-        print(f"[data] Loading cached tokens from {legacy}")
-        return torch.load(legacy, map_location="cpu", weights_only=True)
-
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    ds_name = cfg["data"].get("train_dataset", "HuggingFaceFW/fineweb-edu")
-    ds_config = cfg["data"].get("train_dataset_config", None)
-    text_col = cfg["data"].get("text_column", "text")
-    print(f"[data] Streaming {ds_name} config={ds_config} until {target_tokens} tokens ({name})")
-
+    cfg: dict,
+    label: str,
+) -> int:
+    """Fill mm[offset:offset+limit] from one HF streaming dataset. Returns tokens written."""
+    if limit <= 0:
+        return 0
+    print(f"[data] Streaming {label}: {ds_name} config={ds_config} → {limit} tokens", flush=True)
     kwargs = {"path": ds_name, "split": "train", "streaming": True}
     if ds_config:
         kwargs["name"] = ds_config
     ds = load_dataset(**kwargs)
     ds = ds.shuffle(seed=seed, buffer_size=int(cfg["data"].get("stream_shuffle_buffer", 10_000)))
 
-    tmp = cache.with_suffix(".npy.tmp")
-    mm = np.lib.format.open_memmap(tmp, mode="w+", dtype=np.int32, shape=(target_tokens,))
     n_tok = 0
     last_report = 0
     eos = tok.eos_token or ""
-    try:
-        tok.model_max_length = 10**9
-    except Exception:
-        pass
     batch_texts: list[str] = []
     flush_every = int(cfg["data"].get("tokenize_flush_docs", 256))
-    report_every = max(1_000_000, target_tokens // 20)
+    report_every = max(500_000, limit // 20)
 
     def _flush_ids(id_lists: list[list[int]]) -> None:
         nonlocal n_tok, last_report
         for ids in id_lists:
             if not ids:
                 continue
-            take = min(len(ids), target_tokens - n_tok)
+            take = min(len(ids), limit - n_tok)
             if take <= 0:
                 return
-            mm[n_tok : n_tok + take] = np.asarray(ids[:take], dtype=np.int32)
+            mm[offset + n_tok : offset + n_tok + take] = np.asarray(ids[:take], dtype=np.int32)
             n_tok += take
             if n_tok - last_report >= report_every:
-                print(f"[data] {name}: {n_tok}/{target_tokens} tokens...", flush=True)
+                print(f"[data] {label}: {n_tok}/{limit} tokens...", flush=True)
                 last_report = n_tok
                 mm.flush()
-            if n_tok >= target_tokens:
+            if n_tok >= limit:
                 return
 
     for ex in ds:
@@ -131,31 +119,131 @@ def build_fineweb_token_buffer(
         enc = tok(batch_texts, add_special_tokens=False, return_attention_mask=False)
         batch_texts = []
         _flush_ids(enc["input_ids"])
-        if n_tok >= target_tokens:
+        if n_tok >= limit:
             break
 
-    if batch_texts and n_tok < target_tokens:
+    if batch_texts and n_tok < limit:
         enc = tok(batch_texts, add_special_tokens=False, return_attention_mask=False)
         _flush_ids(enc["input_ids"])
 
     if n_tok <= 0:
-        raise RuntimeError("FineWeb-Edu stream produced zero tokens")
+        raise RuntimeError(f"stream {label} ({ds_name}) produced zero tokens")
+    print(f"[data] {label}: wrote {n_tok}/{limit} tokens", flush=True)
+    return n_tok
+
+
+def build_fineweb_token_buffer(
+    cfg: dict,
+    tok: AutoTokenizer,
+    *,
+    target_tokens: int,
+    name: str,
+    seed: int,
+) -> torch.Tensor:
+    """
+    Stream train corpus (single FineWeb or multi-source mix), tokenize to int32 memmap.
+    When ``data.sources`` is set, allocate tokens by ``fraction`` (e.g. EN 0.7 / ZH 0.3).
+    """
+    data_dir = Path(cfg["paths"]["data_dir"])
+    cache = _cache_path(data_dir, name, target_tokens, seed, cfg)
+    legacy = _legacy_pt_path(data_dir, name, target_tokens, seed)
+    if cache.exists():
+        print(f"[data] Loading memmap tokens from {cache}")
+        arr = np.load(cache, mmap_mode="r")
+        return torch.from_numpy(arr)
+    if legacy.exists() and not cfg.get("data", {}).get("sources"):
+        print(f"[data] Loading cached tokens from {legacy}")
+        return torch.load(legacy, map_location="cpu", weights_only=True)
+
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        tok.model_max_length = 10**9
+    except Exception:
+        pass
+
+    sources = cfg.get("data", {}).get("sources")
+    if not sources:
+        sources = [
+            {
+                "name": "default",
+                "dataset": cfg["data"].get("train_dataset", "HuggingFaceFW/fineweb-edu"),
+                "config": cfg["data"].get("train_dataset_config"),
+                "text_column": cfg["data"].get("text_column", "text"),
+                "fraction": 1.0,
+            }
+        ]
+
+    fracs = [float(s.get("fraction", 0.0)) for s in sources]
+    ssum = sum(fracs) or 1.0
+    fracs = [f / ssum for f in fracs]
+    # Integer token budgets; last source absorbs remainder
+    budgets = [int(target_tokens * f) for f in fracs]
+    budgets[-1] = target_tokens - sum(budgets[:-1])
+
+    tmp = cache.with_suffix(".npy.tmp")
+    mm = np.lib.format.open_memmap(tmp, mode="w+", dtype=np.int32, shape=(target_tokens,))
+    offset = 0
+    actual_parts = []
+    for src, budget in zip(sources, budgets):
+        written = _stream_source_into_memmap(
+            mm=mm,
+            offset=offset,
+            limit=budget,
+            tok=tok,
+            ds_name=src["dataset"],
+            ds_config=src.get("config"),
+            text_col=src.get("text_column", "text"),
+            seed=seed + hash(src.get("name", src["dataset"])) % 10_000,
+            cfg=cfg,
+            label=f"{name}/{src.get('name', src['dataset'])}",
+        )
+        # If short, leave zeros? Prefer compact: shift is complex; pad by re-using
+        # remaining budget from this source already tried. Record actual.
+        actual_parts.append(
+            {
+                "name": src.get("name"),
+                "dataset": src["dataset"],
+                "config": src.get("config"),
+                "budget": budget,
+                "written": written,
+            }
+        )
+        offset += budget
 
     mm.flush()
     del mm
-    # Truncate file to actual length if short (rare)
+    # If any source under-filled, we still keep full shape (trailing zeros in that slice).
+    # Compact to sum(written) for cleanliness.
+    written_total = sum(p["written"] for p in actual_parts)
     arr = np.load(tmp, mmap_mode="r")
-    actual = int(min(n_tok, target_tokens))
-    if actual < target_tokens:
-        final = np.lib.format.open_memmap(cache, mode="w+", dtype=np.int32, shape=(actual,))
-        final[:] = arr[:actual]
-        final.flush()
-        del final
+    if written_total < target_tokens:
+        # Pack non-zero slices: rebuild densely from each segment
+        packed = np.lib.format.open_memmap(cache, mode="w+", dtype=np.int32, shape=(written_total,))
+        o_in = 0
+        o_out = 0
+        for p, budget in zip(actual_parts, budgets):
+            w = int(p["written"])
+            if w > 0:
+                packed[o_out : o_out + w] = arr[o_in : o_in + w]
+                o_out += w
+            o_in += budget
+        packed.flush()
+        del packed
         tmp.unlink(missing_ok=True)
+        actual = written_total
     else:
         tmp.replace(cache)
+        actual = target_tokens
 
-    meta = {"name": name, "target_tokens": target_tokens, "actual": actual, "seed": seed, "dtype": "int32"}
+    meta = {
+        "name": name,
+        "target_tokens": target_tokens,
+        "actual": actual,
+        "seed": seed,
+        "dtype": "int32",
+        "cache_tag": _cache_tag(cfg),
+        "sources": actual_parts,
+    }
     with open(cache.with_suffix(".json"), "w") as f:
         json.dump(meta, f, indent=2)
     print(f"[data] Cached {actual} tokens → {cache}")

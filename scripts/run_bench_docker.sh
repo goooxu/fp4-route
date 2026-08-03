@@ -3,13 +3,13 @@
 #
 # Usage (on GPU node with docker):
 #   bash scripts/run_bench_docker.sh
-#   IMG=nvcr.io/nvidia/pytorch:26.06-py3 bash scripts/run_bench_docker.sh
+#   IMG=nvcr.io/nvidia/pytorch:26.07-py3 bash scripts/run_bench_docker.sh
 #
 # Or from login:
 #   REMOTE_HOST=10.x.x.x bash scripts/run_bench_docker.sh --remote
 set -euo pipefail
 
-IMG="${IMG:-nvcr.io/nvidia/pytorch:26.06-py3}"
+IMG="${IMG:-nvcr.io/nvidia/pytorch:26.07-py3}"
 NFS_ROOT="${NFS_ROOT:-/home/scratch.gemsg_sw/grokbuild/mxfp4_route_compare}"
 REMOTE_HOST="${REMOTE_HOST:-}"
 GPU="${CUDA_VISIBLE_DEVICES:-0}"

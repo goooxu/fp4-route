@@ -24,7 +24,7 @@ def main():
     perf_dir = root / "results" / "perf"
 
     lines = [
-        f"# Full R1/R2/R3 report (seed={args.seed})",
+        f"# Full R1–R5 report (seed={args.seed})",
         "",
         f"Config: `{args.config}`",
         "",
@@ -58,7 +58,7 @@ def main():
 
     # Steady train throughput from jsonl if present
     lines += ["", "## Train log steady tokens/s (from jsonl)", ""]
-    for name in ("train_bf16.jsonl", "train_nvfp4.jsonl"):
+    for name in ("train_bf16.jsonl", "train_nvfp4.jsonl", "train_mxfp8.jsonl"):
         path = res_dir / name
         if not path.exists():
             # also under seed results sometimes only metrics

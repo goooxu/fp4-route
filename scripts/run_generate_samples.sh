@@ -2,7 +2,7 @@
 # Generate qualitative samples for report (R1/R2/R3).
 set -euo pipefail
 ROOT="${NFS_ROOT:-/home/scratch.gemsg_sw/grokbuild/mxfp4_route_compare}"
-IMG="${IMG:-nvcr.io/nvidia/pytorch:26.06-py3}"
+IMG="${IMG:-nvcr.io/nvidia/pytorch:26.07-py3}"
 SEED="${SEED:-42}"
 MAX_NEW="${MAX_NEW:-64}"
 GEN_SEED="${GEN_SEED:-0}"

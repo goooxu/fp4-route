@@ -1,23 +1,26 @@
 # fp4-route
 
-Compare **three train/infer routes** on a causal LM using **hardware TE NVFP4**.
+Compare **five train/infer routes** on a causal LM using hardware TE (**NVFP4** + **MXFP8**).
 
 | Route | Train | Infer |
 |-------|-------|-------|
 | **R1** | From-scratch BF16 | BF16 |
-| **R2** | Same BF16 checkpoint | TE **NVFP4** (block Linears) |
-| **R3** | TE **NVFP4** train (block Linears) | TE **NVFP4** |
+| **R2** | Same BF16 checkpoint | TE **NVFP4** |
+| **R3** | TE **NVFP4** train | TE **NVFP4** |
+| **R4** | Same BF16 checkpoint | TE **MXFP8** |
+| **R5** | TE **MXFP8** train | TE **MXFP8** |
 
 **Quant scope:** transformer-block `Linear` only; `embed_tokens` + `lm_head` stay high precision.
 
 Architecture: [`HuggingFaceTB/SmolLM2-360M`](https://huggingface.co/HuggingFaceTB/SmolLM2-360M) via `from_config` (random init, ~362M).  
-Train: FineWeb-Edu ~7B tokens (English). Eval: WikiText-2 **PPL** + throughput + generation samples.
+Train data: **~7B tokens**, English FineWeb-Edu **70%** + Chinese FineWeb-2 (`zho_Hans`) **30%**.  
+Eval: WikiText-2 **PPL** (English) + throughput + generation samples.
 
-**Requires Transformer Engine (NVFP4)** — use `nvcr.io/nvidia/pytorch:26.06-py3`.
+**Requires Transformer Engine** — use `nvcr.io/nvidia/pytorch:26.07-py3`.
 
 **中文技术报告：** [`docs/TECHNICAL_REPORT_zh.md`](docs/TECHNICAL_REPORT_zh.md)（SVG 配图见 `docs/figures/`）。  
 **结果摘要：** [`EXPERIMENT_SUMMARY.md`](EXPERIMENT_SUMMARY.md) · [`RUN_STATUS.md`](RUN_STATUS.md)。  
-Seeds **42** / **43** 主线已跑完。
+**当前：** mix73 + 26.07 全量 R1–R5 **重跑中**（旧纯英 26.06 结果在 `*_legacy_en_2606_*`）。
 
 ---
 
@@ -99,7 +102,7 @@ NPROC=4 SEED=43 bash scripts/run_resume_r123.sh
 SEED=42 LANG=en MAX_NEW=64 bash scripts/run_generate_samples.sh
 
 # Throughput
-IMG=nvcr.io/nvidia/pytorch:26.06-py3 bash scripts/run_bench_docker.sh
+IMG=nvcr.io/nvidia/pytorch:26.07-py3 bash scripts/run_bench_docker.sh
 ```
 
 Configs: `configs/smoke_135m.yaml`, `configs/main_360m.yaml`, `configs/bench_360m.yaml`.

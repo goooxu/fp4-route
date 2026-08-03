@@ -2,7 +2,7 @@
 
 **面向读者：** 具备基础深度学习与 Python 经验，**不要求**事先了解 FP8/FP4 或 Transformer Engine。  
 **实验代码：** 仓库 `mxfp4_route_compare`  
-**环境：** `nvcr.io/nvidia/pytorch:26.06-py3` · 4×NVIDIA GB200  
+**环境：** `nvcr.io/nvidia/pytorch:26.07-py3` · 4×NVIDIA GB200  
 **主线配置：** SmolLM2-360M 架构 · FineWeb-Edu ~7B tokens · seed 42 / 43  
 
 ---
@@ -436,7 +436,7 @@ PPL 越低，说明模型越能预测下一个 token。
 ### 9.1 软件环境
 
 ```text
-镜像：nvcr.io/nvidia/pytorch:26.06-py3
+镜像：nvcr.io/nvidia/pytorch:26.07-py3
 关键库：PyTorch + Transformer Engine（镜像内置）
 硬件：4×NVIDIA GB200
 ```

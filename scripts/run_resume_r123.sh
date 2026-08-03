@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Resume R1/R2/R3 on GPU node from existing NFS checkpoints (safe for machine reclaim).
+# Resume R1–R5 on GPU node from existing NFS checkpoints (safe for machine reclaim).
+#
+# Routes: R1 BF16 | R2 BF16→NVFP4 | R3 NVFP4 | R4 BF16→MXFP8 | R5 MXFP8
+# Image default: nvcr.io/nvidia/pytorch:26.07-py3
 #
 # Unlike run_full_r123.sh this script:
 #   - NEVER renames/moves checkpoints/seed_$SEED
@@ -16,7 +19,7 @@
 #   SAVE_EVERY=500  optional override written into a temp config
 set -euo pipefail
 
-IMG="${IMG:-nvcr.io/nvidia/pytorch:26.06-py3}"
+IMG="${IMG:-nvcr.io/nvidia/pytorch:26.07-py3}"
 NFS_ROOT="${NFS_ROOT:-/home/scratch.gemsg_sw/grokbuild/mxfp4_route_compare}"
 REMOTE_HOST="${REMOTE_HOST:-}"
 NPROC="${NPROC:-4}"
@@ -116,15 +119,18 @@ run_py() {
   fi
 }
 
+# Mix-73 EN/ZH cache (see configs/main_360m.yaml cache_tag)
+TRAIN_NPY="data/fineweb_edu/train_tok7000000000_mix73_enzh_seed${SEED}.npy"
+
 if [[ "${SKIP_TRAIN:-0}" != "1" ]]; then
-  echo "===== [1/6] prepare data (skip if present) ====="
-  if [[ ! -d data/wikitext2 ]] || [[ ! -f data/fineweb_edu/train_tok7000000000_seed${SEED}.npy ]]; then
+  echo "===== [1/7] prepare data (mix73 EN/ZH, skip if present) ====="
+  if [[ ! -d data/wikitext2 ]] || [[ ! -f "$TRAIN_NPY" ]]; then
     python scripts/01_prepare_data.py --config "$CFG" --seed "$SEED" --prefetch-fineweb
   else
-    echo "data present — skip prepare"
+    echo "data present — skip prepare ($TRAIN_NPY)"
   fi
 
-  echo "===== [2/6] init model (skip if present) ====="
+  echo "===== [2/7] init model (skip if present) ====="
   INIT="checkpoints/seed_${SEED}/init_model"
   if [[ -f "$INIT/model.safetensors" || -f "$INIT/config.json" ]]; then
     echo "init_model present: $INIT — skip (preserve shared init for resume)"
@@ -132,23 +138,26 @@ if [[ "${SKIP_TRAIN:-0}" != "1" ]]; then
     python scripts/01b_init_model.py --config "$CFG" --seed "$SEED"
   fi
 
-  echo "===== [3/6] R1/R2 train BF16 (resume if ckpt present) ====="
+  echo "===== [3/7] R1/R2/R4 train BF16 (resume if ckpt present) ====="
   if [[ -f checkpoints/seed_${SEED}/ckpt_bf16/resume/train_state.pt ]]; then
     echo "found resume: $(cat checkpoints/seed_${SEED}/ckpt_bf16/resume/checkpoint_meta.json 2>/dev/null || true)"
   fi
   run_py scripts/02_train_bf16.py --config "$CFG" --seed "$SEED"
 
-  echo "===== [4/6] R3 train TE NVFP4 (resume if ckpt present) ====="
-  run_py scripts/03_train_nvfp4.py --config "$CFG" --seed "$SEED"
+  echo "===== [4/7] R3 train TE NVFP4 ====="
+  run_py scripts/03_train_nvfp4.py --config "$CFG" --seed "$SEED" --recipe nvfp4
+
+  echo "===== [5/7] R5 train TE MXFP8 ====="
+  run_py scripts/03_train_nvfp4.py --config "$CFG" --seed "$SEED" --recipe mxfp8
 else
   echo "[skip] training"
 fi
 
-echo "===== [5/6] PPL R1,R2,R3 ====="
-python scripts/05_eval_ppl.py --config "$CFG" --seed "$SEED" --routes R1,R2,R3
+echo "===== [6/7] PPL R1,R2,R3,R4,R5 ====="
+python scripts/05_eval_ppl.py --config "$CFG" --seed "$SEED" --routes R1,R2,R3,R4,R5
 
 if [[ "${SKIP_BENCH:-0}" != "1" ]]; then
-  echo "===== [6/6] throughput benches ====="
+  echo "===== [7/7] throughput benches ====="
   python - <<PY
 import yaml
 from pathlib import Path
@@ -162,6 +171,7 @@ bench["paths"] = {
     "init_model": cfg["paths"]["init_model"],
     "ckpt_bf16": cfg["paths"]["ckpt_bf16"],
     "ckpt_nvfp4": cfg["paths"]["ckpt_nvfp4"],
+    "ckpt_mxfp8": cfg["paths"].get("ckpt_mxfp8", ""),
     "results": str(Path(cfg["_root"]) / "results" / "perf"),
 }
 bench["seed"] = int("$SEED")
@@ -171,7 +181,6 @@ PY
   BC=/tmp/bench_r123.yaml
   WARM=3
   MEAS=8
-  # Seed-tag bench outputs so seed42/43 do not clobber each other
   PTAG="seed${SEED}"
   CUDA_VISIBLE_DEVICES=0 python scripts/12_bench_throughput.py --config $BC --route R1 --phase train --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
     --out results/perf/bench_R1_train_n1_${PTAG}_best.json || true
@@ -183,12 +192,20 @@ PY
     --out results/perf/bench_R3_train_n1_${PTAG}_best.json || true
   CUDA_VISIBLE_DEVICES=0 python scripts/12_bench_throughput.py --config $BC --route R3 --phase infer --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
     --out results/perf/bench_R3_infer_n1_${PTAG}_best.json || true
+  CUDA_VISIBLE_DEVICES=0 python scripts/12_bench_throughput.py --config $BC --route R4 --phase infer --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
+    --out results/perf/bench_R4_infer_n1_${PTAG}_best.json || true
+  CUDA_VISIBLE_DEVICES=0 python scripts/12_bench_throughput.py --config $BC --route R5 --phase train --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
+    --out results/perf/bench_R5_train_n1_${PTAG}_best.json || true
+  CUDA_VISIBLE_DEVICES=0 python scripts/12_bench_throughput.py --config $BC --route R5 --phase infer --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
+    --out results/perf/bench_R5_infer_n1_${PTAG}_best.json || true
   unset CUDA_VISIBLE_DEVICES
   export CUDA_VISIBLE_DEVICES=0,1,2,3
   torchrun --standalone --nproc_per_node=$NPROC scripts/12_bench_throughput.py --config $BC --route R1 --phase train --ddp --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
     --out results/perf/bench_R1_train_n${NPROC}_${PTAG}_best.json || true
   torchrun --standalone --nproc_per_node=$NPROC scripts/12_bench_throughput.py --config $BC --route R3 --phase train --ddp --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
     --out results/perf/bench_R3_train_n${NPROC}_${PTAG}_best.json || true
+  torchrun --standalone --nproc_per_node=$NPROC scripts/12_bench_throughput.py --config $BC --route R5 --phase train --ddp --sweep --max-batch $MAX_BATCH --warmup $WARM --measure $MEAS \
+    --out results/perf/bench_R5_train_n${NPROC}_${PTAG}_best.json || true
 else
   echo "[skip] bench"
 fi
@@ -196,7 +213,7 @@ fi
 echo "===== write full_report ====="
 export PYTHONPATH=/work
 python scripts/write_full_report.py --seed "$SEED" --config "$CFG" || true
-echo "===== RESUME R123 DONE $(date -Is) ====="
+echo "===== RESUME R1-R5 DONE $(date -Is) ====="
 ' 2>&1 | tee -a "$LOG"
 
   echo "[resume-r123] finished; see $LOG"

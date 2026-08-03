@@ -2,7 +2,7 @@
 # End-to-end: from-scratch R1/R2/R3 train + WikiText PPL + throughput benches.
 # Runs inside NGC PyTorch (TE + NVFP4). Prefer on GPU node:
 #
-#   IMG=nvcr.io/nvidia/pytorch:26.06-py3 \
+#   IMG=nvcr.io/nvidia/pytorch:26.07-py3 \
 #   NPROC=4 SEED=42 \
 #   bash scripts/run_full_r123.sh
 #
@@ -16,7 +16,7 @@
 #   MAX_BATCH=192     bench sweep upper bound
 set -euo pipefail
 
-IMG="${IMG:-nvcr.io/nvidia/pytorch:26.06-py3}"
+IMG="${IMG:-nvcr.io/nvidia/pytorch:26.07-py3}"
 NFS_ROOT="${NFS_ROOT:-/home/scratch.gemsg_sw/grokbuild/mxfp4_route_compare}"
 REMOTE_HOST="${REMOTE_HOST:-}"
 NPROC="${NPROC:-4}"

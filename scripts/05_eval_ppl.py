@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""WikiText-2 PPL for routes R1 / R2 / R3 (TE NVFP4).
+"""WikiText-2 PPL for routes R1–R5.
 
 R1: BF16 train → BF16 infer
-R2: same BF16 ckpt → TE NVFP4 infer (block Linear)
+R2: same BF16 ckpt → TE NVFP4 infer
 R3: TE NVFP4 train → TE NVFP4 infer
+R4: same BF16 ckpt → TE MXFP8 infer
+R5: TE MXFP8 train → TE MXFP8 infer
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from mxfp4_lib.te_linear import (
-    get_preferred_recipe,
+    get_recipe,
     make_te_autocast_ctx,
     replace_linears_with_te,
     te_available,
@@ -37,6 +39,10 @@ _ROUTE_ALIASES = {
     "nvfp4_ptq": "R2",
     "r3": "R3",
     "nvfp4": "R3",
+    "r4": "R4",
+    "mxfp8_ptq": "R4",
+    "r5": "R5",
+    "mxfp8": "R5",
 }
 
 
@@ -100,7 +106,7 @@ def eval_ppl(model, tok, cfg, device, *, te_ctx=None, use_fp16: bool = False) ->
 
 
 def _load_route(cfg, route: str, device: torch.device):
-    """Return model, tok, te_ctx, use_fp16, train_dtype, infer_dtype. route is R1|R2|R3."""
+    """Return model, tok, te_ctx, use_fp16, train_dtype, infer_dtype. R1–R5."""
     paths = cfg["paths"]
 
     if route == "R1":
@@ -110,29 +116,29 @@ def _load_route(cfg, route: str, device: torch.device):
         model.to(device)
         return model, tok, None, False, "bf16", "bf16"
 
-    if route in ("R2", "R3"):
+    te_routes = {
+        "R2": ("ckpt_bf16", "bf16", "nvfp4"),
+        "R3": ("ckpt_nvfp4", "te_nvfp4", "nvfp4"),
+        "R4": ("ckpt_bf16", "bf16", "mxfp8"),
+        "R5": ("ckpt_mxfp8", "te_mxfp8", "mxfp8"),
+    }
+    if route in te_routes:
         if not te_available():
-            raise SystemExit("Transformer Engine required for R2/R3 (NVFP4)")
-        if route == "R2":
-            path = Path(paths["ckpt_bf16"])
-            train_dtype = "bf16"
-        else:
-            path = Path(paths.get("ckpt_nvfp4") or "")
-            if not path or not path.exists():
-                raise SystemExit(f"R3 ckpt missing: {path} (run 03_train_nvfp4.py)")
-            train_dtype = "te_nvfp4"
-        if not path.exists():
-            raise SystemExit(f"{route} weights missing: {path}")
+            raise SystemExit("Transformer Engine required for R2–R5")
+        path_key, train_dtype, recipe_key = te_routes[route]
+        path = Path(paths.get(path_key) or "")
+        if not path or not path.exists():
+            raise SystemExit(f"{route} weights missing: {path} (path key {path_key})")
         model = AutoModelForCausalLM.from_pretrained(path, torch_dtype=torch.bfloat16)
         tok = AutoTokenizer.from_pretrained(path)
-        recipe, rname = get_preferred_recipe()
+        recipe, rname = get_recipe(recipe_key, probe=True)
         n = replace_linears_with_te(model, include_lm_head=False)
         model.to(device)
         te_ctx = make_te_autocast_ctx(recipe)
-        infer_dtype = f"te_{rname.replace('BlockScaling','').lower()}(blocks={n})"
+        infer_dtype = f"te_{rname.replace('BlockScaling', '').lower()}(blocks={n})"
         return model, tok, te_ctx, False, train_dtype, infer_dtype
 
-    raise SystemExit(f"unknown route {route!r}; use R1,R2,R3")
+    raise SystemExit(f"unknown route {route!r}; use R1,R2,R3,R4,R5")
 
 
 def main():
@@ -141,8 +147,8 @@ def main():
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument(
         "--routes",
-        default="R1,R2,R3",
-        help="Comma list: R1,R2,R3",
+        default="R1,R2,R3,R4,R5",
+        help="Comma list: R1,R2,R3,R4,R5",
     )
     args = ap.parse_args()
     cfg = load_cfg(args.config, seed=args.seed)
@@ -154,8 +160,8 @@ def main():
 
     for route_arg in [r.strip() for r in args.routes.split(",") if r.strip()]:
         route = _ROUTE_ALIASES.get(route_arg.lower(), route_arg.upper())
-        if route not in ("R1", "R2", "R3"):
-            raise SystemExit(f"unknown route {route_arg!r}; use R1,R2,R3")
+        if route not in ("R1", "R2", "R3", "R4", "R5"):
+            raise SystemExit(f"unknown route {route_arg!r}; use R1,R2,R3,R4,R5")
         print(f"[eval] route={route}")
         model, tok, te_ctx, use_fp16, train_dtype, infer_dtype = _load_route(cfg, route, device)
         ppl = eval_ppl(model, tok, cfg, device, te_ctx=te_ctx, use_fp16=use_fp16)
@@ -174,7 +180,7 @@ def main():
     with open(results_dir / "metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
     lines = [
-        "# R1 / R2 / R3 Route Compare (TE NVFP4)",
+        "# R1–R5 Route Compare (TE NVFP4 + MXFP8)",
         "",
         "| Route | Train | Infer | WikiText-2 PPL |",
         "|-------|-------|-------|----------------|",
@@ -187,9 +193,11 @@ def main():
         "",
         "## Notes",
         "",
-        "- **R1**: BF16 train → **BF16** infer",
-        "- **R2**: same BF16 ckpt → TE **NVFP4** infer (block Linears)",
+        "- **R1**: BF16 train → BF16 infer",
+        "- **R2**: same BF16 ckpt → TE NVFP4 infer",
         "- **R3**: TE NVFP4 train → TE NVFP4 infer",
+        "- **R4**: same BF16 ckpt → TE MXFP8 infer",
+        "- **R5**: TE MXFP8 train → TE MXFP8 infer",
     ]
     (results_dir / "summary.md").write_text("\n".join(lines) + "\n")
     print(f"[eval] wrote {results_dir / 'metrics.json'}")

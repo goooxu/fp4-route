@@ -3,10 +3,10 @@
 # Each backend/phase is a separate process so one CUDA/NVML glitch does not kill the suite.
 #
 # On GPU node:
-#   IMG=nvcr.io/nvidia/pytorch:26.06-py3 bash scripts/run_bench_max_ddp.sh
+#   IMG=nvcr.io/nvidia/pytorch:26.07-py3 bash scripts/run_bench_max_ddp.sh
 set -euo pipefail
 
-IMG="${IMG:-nvcr.io/nvidia/pytorch:26.06-py3}"
+IMG="${IMG:-nvcr.io/nvidia/pytorch:26.07-py3}"
 NFS_ROOT="${NFS_ROOT:-/home/scratch.gemsg_sw/grokbuild/mxfp4_route_compare}"
 REMOTE_HOST="${REMOTE_HOST:-}"
 NPROC="${NPROC:-4}"

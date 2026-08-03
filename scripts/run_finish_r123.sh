@@ -8,7 +8,7 @@
 #   python scripts/remote_run.py --host HOST 'nohup ... run_finish_r123.sh > logs/... &'
 set -euo pipefail
 
-IMG="${IMG:-nvcr.io/nvidia/pytorch:26.06-py3}"
+IMG="${IMG:-nvcr.io/nvidia/pytorch:26.07-py3}"
 NFS_ROOT="${NFS_ROOT:-/home/scratch.gemsg_sw/grokbuild/mxfp4_route_compare}"
 NPROC="${NPROC:-4}"
 SEED="${SEED:-42}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""R1/R2 shared: from-scratch BF16 training (R1 = BF16 infer; R2 = TE NVFP4 infer)."""
+"""R1/R2/R4 shared: from-scratch BF16 training (R2=NVFP4 infer, R4=MXFP8 infer)."""
 
 from __future__ import annotations
 
