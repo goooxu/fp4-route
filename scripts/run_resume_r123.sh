@@ -131,11 +131,13 @@ if [[ "${SKIP_TRAIN:-0}" != "1" ]]; then
     echo "data present — skip prepare ($TRAIN_NPY)"
   fi
 
-  echo "===== [2/7] init model (skip if present) ====="
+  echo "===== [2/7] init model (skip if weights present) ====="
   INIT="checkpoints/seed_${SEED}/init_model"
-  if [[ -f "$INIT/model.safetensors" || -f "$INIT/config.json" ]]; then
+  # Require weight file (config-only dir is incomplete after partial archive moves)
+  if [[ -f "$INIT/model.safetensors" || -f "$INIT/pytorch_model.bin" ]]; then
     echo "init_model present: $INIT — skip (preserve shared init for resume)"
   else
+    echo "init weights missing under $INIT — running 01b_init_model"
     python scripts/01b_init_model.py --config "$CFG" --seed "$SEED"
   fi
 

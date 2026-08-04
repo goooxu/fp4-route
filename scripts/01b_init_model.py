@@ -38,6 +38,16 @@ def main():
     out = ensure_dir(cfg["paths"]["init_model"])
     model.save_pretrained(out, safe_serialization=True)
     tok.save_pretrained(out)
+    # NFS root_squash: make weights readable by host user / later containers
+    try:
+        import os
+        for p in Path(out).iterdir():
+            try:
+                os.chmod(p, 0o666 if p.is_file() else 0o777)
+            except OSError:
+                pass
+    except Exception:
+        pass
 
     meta = {
         "seed": cfg["seed"],
