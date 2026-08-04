@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -244,19 +245,32 @@ def build_fineweb_token_buffer(
         )
         offset += budget
         mm.flush()
-        with open(progress_path, "w") as f:
-            json.dump(
-                {
-                    "target_tokens": target_tokens,
-                    "seed": seed,
-                    "cache_tag": _cache_tag(cfg),
-                    "budgets": budgets,
-                    "offset": offset,
-                    "actual_parts": actual_parts,
-                },
-                f,
-                indent=2,
-            )
+        # Best-effort progress sidecar. On NFS root_squash, root→nobody cannot
+        # overwrite a host-user-owned progress file; never fail the pack for that.
+        prog_obj = {
+            "target_tokens": target_tokens,
+            "seed": seed,
+            "cache_tag": _cache_tag(cfg),
+            "budgets": budgets,
+            "offset": offset,
+            "actual_parts": actual_parts,
+        }
+        try:
+            wip = progress_path.with_suffix(progress_path.suffix + ".wip")
+            if progress_path.exists() and not os.access(progress_path, os.W_OK):
+                try:
+                    progress_path.unlink()
+                except OSError:
+                    pass
+            with open(wip, "w") as f:
+                json.dump(prog_obj, f, indent=2)
+            wip.replace(progress_path)
+            try:
+                progress_path.chmod(0o666)
+            except OSError:
+                pass
+        except OSError as e:
+            print(f"[data] WARN: progress sidecar write failed ({e}); continuing", flush=True)
 
     mm.flush()
     del mm

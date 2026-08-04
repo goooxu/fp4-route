@@ -44,8 +44,9 @@ run_on_gpu() {
     echo "[resume-r123] WARN: no bf16 resume checkpoint — will start BF16 from init" | tee -a "$LOG"
   fi
 
-  # Docker (root) write access on NFS
-  chmod -R a+rwX "$NFS_ROOT/checkpoints" "$NFS_ROOT/results" "$NFS_ROOT/logs" 2>/dev/null || true
+  # Docker (root) write access on NFS (root_squash → nobody; need world-writable)
+  chmod -R a+rwX "$NFS_ROOT/checkpoints" "$NFS_ROOT/results" "$NFS_ROOT/logs" \
+    "$NFS_ROOT/data" 2>/dev/null || true
 
   # Optional SAVE_EVERY override via temp yaml (keeps durable periodic saves)
   CONFIG_IN_CONTAINER="/work/$CONFIG"
