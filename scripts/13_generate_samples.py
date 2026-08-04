@@ -106,11 +106,12 @@ def generate_one(model, tok, prompt: str, *, max_new_tokens: int, te_ctx=None, d
         full = tok.decode(out[0], skip_special_tokens=True)
         return {"prompt": prompt, "continuation": cont.strip(), "full": full.strip(), "infer": dtype_name}
 
-    # TE path: pad every forward so leading dims product (B*S) % 16 == 0
+    # TE path: pad every forward so B*S % block == 0 (NVFP4=16, MXFP8=32 → use 32)
     ids = input_ids
     mask = attn
+    te_pad_mult = 32
     for _ in range(max_new_tokens):
-        ids_p, mask_p = _pad_to_multiple(ids, mask, multiple=16, pad_id=pad_id)
+        ids_p, mask_p = _pad_to_multiple(ids, mask, multiple=te_pad_mult, pad_id=pad_id)
         with te_ctx():
             logits = model(input_ids=ids_p, attention_mask=mask_p).logits
         # last *real* token position (before pad)

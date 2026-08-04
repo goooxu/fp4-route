@@ -46,11 +46,15 @@ _ROUTE_ALIASES = {
 }
 
 
-def _pad_te_seq(chunk: torch.Tensor, labels: torch.Tensor, *, multiple: int = 16, pad_id: int = 0):
-    """Pad seq dim so TE NVFP4/FP8 accepts activations.
+def _pad_te_seq(chunk: torch.Tensor, labels: torch.Tensor, *, multiple: int = 32, pad_id: int = 0):
+    """Pad seq dim so TE low-precision accepts activations.
 
-    NVFP4 requires the flattened leading dim (B*S for [B,S,H]) divisible by 16.
-    With B=1 this means S % 16 == 0. Padded labels are -100 (excluded from NLL).
+    TE constraint is on flattened leading dims of [B, S, H] → (B*S) % block == 0.
+    With B=1 this means S % multiple == 0.
+    - NVFP4 block is 16
+    - MXFP8 block is 32 (stricter)
+
+    Default multiple=32 covers both. Padded labels use -100 (excluded from NLL).
     """
     s = chunk.size(1)
     if s % multiple == 0:
@@ -61,8 +65,29 @@ def _pad_te_seq(chunk: torch.Tensor, labels: torch.Tensor, *, multiple: int = 16
     return chunk, labels
 
 
+def _te_seq_multiple(recipe_key: str | None) -> int:
+    """Seq-length pad multiple for a TE recipe (NVFP4=16, MXFP8=32)."""
+    if not recipe_key:
+        return 32
+    k = recipe_key.lower()
+    if "mxfp8" in k or "fp8" in k:
+        return 32
+    if "nvfp4" in k or "fp4" in k:
+        return 16
+    return 32
+
+
 @torch.no_grad()
-def eval_ppl(model, tok, cfg, device, *, te_ctx=None, use_fp16: bool = False) -> float:
+def eval_ppl(
+    model,
+    tok,
+    cfg,
+    device,
+    *,
+    te_ctx=None,
+    use_fp16: bool = False,
+    te_pad_multiple: int = 32,
+) -> float:
     from contextlib import nullcontext
 
     ds = load_from_disk(str(Path(cfg["paths"]["data_dir"]) / "wikitext2"))["test"]
@@ -86,9 +111,11 @@ def eval_ppl(model, tok, cfg, device, *, te_ctx=None, use_fp16: bool = False) ->
         labels = chunk.clone()
         if begin != 0:
             labels[:, : chunk.size(1) - trg_len] = -100
-        # TE NVFP4: pad trailing tokens so B*S is divisible by 16
+        # TE: pad trailing tokens so B*S is divisible by recipe block size
         if te_ctx is not None:
-            chunk, labels = _pad_te_seq(chunk, labels, multiple=16, pad_id=pad_id)
+            chunk, labels = _pad_te_seq(
+                chunk, labels, multiple=int(te_pad_multiple), pad_id=pad_id
+            )
         amp = torch.autocast(
             device_type=device.type,
             dtype=torch.float16 if use_fp16 else torch.bfloat16,
@@ -106,7 +133,7 @@ def eval_ppl(model, tok, cfg, device, *, te_ctx=None, use_fp16: bool = False) ->
 
 
 def _load_route(cfg, route: str, device: torch.device):
-    """Return model, tok, te_ctx, use_fp16, train_dtype, infer_dtype. R1–R5."""
+    """Return model, tok, te_ctx, use_fp16, train_dtype, infer_dtype, te_pad_multiple."""
     paths = cfg["paths"]
 
     if route == "R1":
@@ -114,7 +141,7 @@ def _load_route(cfg, route: str, device: torch.device):
         model = AutoModelForCausalLM.from_pretrained(path, torch_dtype=torch.bfloat16)
         tok = AutoTokenizer.from_pretrained(path)
         model.to(device)
-        return model, tok, None, False, "bf16", "bf16"
+        return model, tok, None, False, "bf16", "bf16", 1
 
     te_routes = {
         "R2": ("ckpt_bf16", "bf16", "nvfp4"),
@@ -136,7 +163,7 @@ def _load_route(cfg, route: str, device: torch.device):
         model.to(device)
         te_ctx = make_te_autocast_ctx(recipe)
         infer_dtype = f"te_{rname.replace('BlockScaling', '').lower()}(blocks={n})"
-        return model, tok, te_ctx, False, train_dtype, infer_dtype
+        return model, tok, te_ctx, False, train_dtype, infer_dtype, _te_seq_multiple(recipe_key)
 
     raise SystemExit(f"unknown route {route!r}; use R1,R2,R3,R4,R5")
 
@@ -163,14 +190,27 @@ def main():
         if route not in ("R1", "R2", "R3", "R4", "R5"):
             raise SystemExit(f"unknown route {route_arg!r}; use R1,R2,R3,R4,R5")
         print(f"[eval] route={route}")
-        model, tok, te_ctx, use_fp16, train_dtype, infer_dtype = _load_route(cfg, route, device)
-        ppl = eval_ppl(model, tok, cfg, device, te_ctx=te_ctx, use_fp16=use_fp16)
+        model, tok, te_ctx, use_fp16, train_dtype, infer_dtype, te_pad = _load_route(
+            cfg, route, device
+        )
+        if te_ctx is not None:
+            print(f"[eval] TE seq pad multiple={te_pad}")
+        ppl = eval_ppl(
+            model,
+            tok,
+            cfg,
+            device,
+            te_ctx=te_ctx,
+            use_fp16=use_fp16,
+            te_pad_multiple=te_pad,
+        )
         row = {
             "route": route,
             "train_dtype": train_dtype,
             "infer_dtype": infer_dtype,
             "ppl": ppl,
             "seed": cfg["seed"],
+            "te_pad_multiple": te_pad if te_ctx is not None else None,
         }
         metrics.append(row)
         print(f"[eval] {route} ppl={ppl:.4f} train={train_dtype} infer={infer_dtype}")
