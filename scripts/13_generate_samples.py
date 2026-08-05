@@ -17,7 +17,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from mxfp4_lib.te_linear import (
-    get_preferred_recipe,
+    get_recipe,
     make_te_autocast_ctx,
     replace_linears_with_te,
     te_available,
@@ -128,6 +128,7 @@ def generate_one(model, tok, prompt: str, *, max_new_tokens: int, te_ctx=None, d
 
 
 def load_route(cfg, route: str, device: torch.device):
+    """Load R1–R5 weights; TE routes use explicit recipe (nvfp4|mxfp8)."""
     paths = cfg["paths"]
     if route == "R1":
         path = Path(paths["ckpt_bf16"])
@@ -137,17 +138,24 @@ def load_route(cfg, route: str, device: torch.device):
         return model, tok, None, "bf16"
 
     if not te_available():
-        raise SystemExit("TE required for R2/R3")
-    if route == "R2":
-        path = Path(paths["ckpt_bf16"])
-        train_note = "bf16_ckpt"
-    else:
-        path = Path(paths["ckpt_nvfp4"])
-        train_note = "nvfp4_ckpt"
+        raise SystemExit("TE required for R2–R5")
+    # route -> (ckpt key, train note, recipe key for get_recipe)
+    te_map = {
+        "R2": ("ckpt_bf16", "bf16_ckpt", "nvfp4"),
+        "R3": ("ckpt_nvfp4", "nvfp4_ckpt", "nvfp4"),
+        "R4": ("ckpt_bf16", "bf16_ckpt", "mxfp8"),
+        "R5": ("ckpt_mxfp8", "mxfp8_ckpt", "mxfp8"),
+    }
+    if route not in te_map:
+        raise SystemExit(f"unknown route {route!r}; use R1–R5")
+    path_key, train_note, recipe_key = te_map[route]
+    path = Path(paths.get(path_key) or "")
+    if not path.exists():
+        raise SystemExit(f"{route} weights missing: {path}")
     model = AutoModelForCausalLM.from_pretrained(path, torch_dtype=torch.bfloat16)
     tok = AutoTokenizer.from_pretrained(path)
     model.to(device)
-    recipe, rname = get_preferred_recipe()
+    recipe, rname = get_recipe(recipe_key, probe=True)
     n = replace_linears_with_te(model, include_lm_head=False)
     model.eval()
     te_ctx = make_te_autocast_ctx(recipe)
@@ -158,7 +166,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/main_360m.yaml")
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--routes", default="R1,R2,R3")
+    ap.add_argument("--routes", default="R1,R2,R3,R4,R5")
     ap.add_argument("--max-new-tokens", type=int, default=80)
     ap.add_argument("--gen-seed", type=int, default=0, help="sampling RNG seed for reproducibility")
     ap.add_argument(
