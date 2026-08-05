@@ -32,7 +32,7 @@ DEFAULT_PROMPTS = [
     "Once upon a time, in a small village,",
 ]
 
-# Chinese prompts (model is English-pretrained FineWeb; quality expected to be weak)
+# Chinese prompts (mix73 train includes FineWeb-2 cmn_Hani; still a small model)
 DEFAULT_PROMPTS_ZH = [
     "人工智能的历史始于",
     "在数学中，质数是",
