@@ -28,7 +28,6 @@ def _bar_svg(title, series, ylabel, out_name, width=720, height=420, y_fmt="{:.1
         '<rect width="100%" height="100%" fill="#ffffff"/>',
         f'<text x="{width/2}" y="28" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" '
         f'font-size="16" font-weight="600" fill="#111827">{title}</text>',
-        # axes
         f'<line x1="{margin_l}" y1="{margin_t}" x2="{margin_l}" y2="{margin_t+plot_h}" '
         f'stroke="#374151" stroke-width="1.5"/>',
         f'<line x1="{margin_l}" y1="{margin_t+plot_h}" x2="{margin_l+plot_w}" y2="{margin_t+plot_h}" '
@@ -38,7 +37,6 @@ def _bar_svg(title, series, ylabel, out_name, width=720, height=420, y_fmt="{:.1
         f'font-size="12" fill="#374151">{ylabel}</text>',
     ]
 
-    # y grid
     for i in range(5):
         yv = vmax * i / 4
         y = margin_t + plot_h * (1 - i / 4)
@@ -65,7 +63,6 @@ def _bar_svg(title, series, ylabel, out_name, width=720, height=420, y_fmt="{:.1
             f'font-family="DejaVu Sans,Arial,sans-serif" font-size="11" fill="#111827">'
             f"{y_fmt.format(val)}</text>"
         )
-        # multi-line labels
         for j, line in enumerate(label.split("\n")):
             parts.append(
                 f'<text x="{x+bar_w/2:.1f}" y="{margin_t+plot_h+18+j*14:.1f}" text-anchor="middle" '
@@ -93,40 +90,75 @@ def load_toks(path):
 
 
 def main():
-    colors = {"R1": "#2563eb", "R2": "#d97706", "R3": "#059669"}
-    for seed in (42, 43):
-        ppl = load_ppl(seed)
-        _bar_svg(
-            f"WikiText-2 PPL（seed={seed}，越低越好）",
-            [
-                (f"R1\nBF16", ppl["R1"], colors["R1"]),
-                (f"R2\nBF16→NVFP4", ppl["R2"], colors["R2"]),
-                (f"R3\nNVFP4", ppl["R3"], colors["R3"]),
-            ],
-            ylabel="PPL",
-            out_name=f"fig06_ppl_seed{seed}.svg",
-            y_fmt="{:.2f}",
-        )
+    colors = {
+        "R1": "#2563eb",
+        "R2": "#d97706",
+        "R3": "#059669",
+        "R4": "#7c3aed",
+        "R5": "#db2777",
+    }
+    # Mainline: seed42 mix73 has R1–R5
+    ppl = load_ppl(42)
+    series = [
+        ("R1\nBF16", ppl["R1"], colors["R1"]),
+        ("R2\nBF16→NVFP4", ppl["R2"], colors["R2"]),
+        ("R3\nNVFP4", ppl["R3"], colors["R3"]),
+        ("R4\nBF16→MXFP8", ppl["R4"], colors["R4"]),
+        ("R5\nMXFP8", ppl["R5"], colors["R5"]),
+    ]
+    _bar_svg(
+        "WikiText-2 PPL（seed=42 · mix73 · 26.07，越低越好）",
+        series,
+        ylabel="PPL",
+        out_name="fig06_ppl_seed42.svg",
+        width=820,
+        height=440,
+        y_fmt="{:.2f}",
+    )
 
-    # throughput: seed42 representative microbench
+    # Optional: seed43 if only R1–R3 (legacy)
+    try:
+        ppl43 = load_ppl(43)
+        if "R1" in ppl43 and "R3" in ppl43:
+            s43 = [
+                (f"R1\nBF16", ppl43["R1"], colors["R1"]),
+                (f"R2\nBF16→NVFP4", ppl43.get("R2", 0), colors["R2"]),
+                (f"R3\nNVFP4", ppl43["R3"], colors["R3"]),
+            ]
+            s43 = [(a, b, c) for a, b, c in s43 if b]
+            if s43:
+                _bar_svg(
+                    "WikiText-2 PPL（seed=43，若存在；可能为历史栈）",
+                    s43,
+                    ylabel="PPL",
+                    out_name="fig06_ppl_seed43.svg",
+                    y_fmt="{:.2f}",
+                )
+    except Exception as e:
+        print("skip seed43 ppl:", e)
+
     perf = ROOT / "results" / "perf"
     pairs = [
-        ("R1 train 1GPU", load_toks(perf / "bench_R1_train_n1_seed42_best.json") or load_toks(perf / "bench_R1_train_n1_best.json"), colors["R1"]),
-        ("R1 infer 1GPU", load_toks(perf / "bench_R1_infer_n1_seed42_best.json") or 526460, colors["R1"]),
-        ("R3 train 1GPU", load_toks(perf / "bench_R3_train_n1_seed42_best.json") or load_toks(perf / "bench_R3_train_n1_best.json"), colors["R3"]),
-        ("R2 infer 1GPU", load_toks(perf / "bench_R2_infer_n1_seed42_best.json") or load_toks(perf / "bench_R2_infer_n1_best.json"), colors["R2"]),
-        ("R3 infer 1GPU", load_toks(perf / "bench_R3_infer_n1_seed42_best.json") or load_toks(perf / "bench_R3_infer_n1_best.json"), colors["R3"]),
-        ("R1 train 4GPU", load_toks(perf / "bench_R1_train_n4_seed42_best.json") or load_toks(perf / "bench_R1_train_n4_best.json"), colors["R1"]),
-        ("R3 train 4GPU", load_toks(perf / "bench_R3_train_n4_seed42_best.json") or load_toks(perf / "bench_R3_train_n4_best.json"), colors["R3"]),
+        ("R1 train\n1GPU", load_toks(perf / "bench_R1_train_n1_seed42_best.json"), colors["R1"]),
+        ("R1 infer\n1GPU", load_toks(perf / "bench_R1_infer_n1_seed42_best.json"), colors["R1"]),
+        ("R3 train\n1GPU", load_toks(perf / "bench_R3_train_n1_seed42_best.json"), colors["R3"]),
+        ("R2 infer\n1GPU", load_toks(perf / "bench_R2_infer_n1_seed42_best.json"), colors["R2"]),
+        ("R3 infer\n1GPU", load_toks(perf / "bench_R3_infer_n1_seed42_best.json"), colors["R3"]),
+        ("R5 train\n1GPU", load_toks(perf / "bench_R5_train_n1_seed42_best.json"), colors["R5"]),
+        ("R4 infer\n1GPU", load_toks(perf / "bench_R4_infer_n1_seed42_best.json"), colors["R4"]),
+        ("R5 infer\n1GPU", load_toks(perf / "bench_R5_infer_n1_seed42_best.json"), colors["R5"]),
+        ("R1 train\n4GPU", load_toks(perf / "bench_R1_train_n4_seed42_best.json"), colors["R1"]),
+        ("R3 train\n4GPU", load_toks(perf / "bench_R3_train_n4_seed42_best.json"), colors["R3"]),
+        ("R5 train\n4GPU", load_toks(perf / "bench_R5_train_n4_seed42_best.json"), colors["R5"]),
     ]
-    series = [(lab.replace(" ", "\n"), v / 1000.0, c) for lab, v, c in pairs if v]
+    series = [(lab, v / 1000.0, c) for lab, v, c in pairs if v]
     _bar_svg(
-        "吞吐 microbench（seed42 权重，k tokens/s，越高越好）",
+        "吞吐 microbench（seed42 mix73，k tokens/s，越高越好）",
         series,
         ylabel="k tokens/s",
         out_name="fig07_throughput.svg",
-        width=900,
-        height=440,
+        width=1100,
+        height=460,
         y_fmt="{:.0f}",
     )
 

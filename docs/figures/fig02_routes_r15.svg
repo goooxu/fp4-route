@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="520" viewBox="0 0 1040 520">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="520" y="28" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="18" font-weight="600" fill="#111827">五条对比路线 R1–R5</text>
+  <text x="520" y="50" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#6b7280">同一架构与数据预算；R2/R4 复用 R1 的 BF16 权重，R3/R5 各自训练</text>
+
+  <rect x="410" y="68" width="220" height="40" rx="8" fill="#f3f4f6" stroke="#9ca3af"/>
+  <text x="520" y="93" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="13" fill="#111827">随机初始化 init_model</text>
+
+  <!-- five columns -->
+  <!-- R1 -->
+  <rect x="20" y="140" width="190" height="340" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+  <text x="115" y="168" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="15" font-weight="700" fill="#1d4ed8">R1 基准</text>
+  <rect x="35" y="190" width="160" height="36" rx="6" fill="#2563eb"/>
+  <text x="115" y="213" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#fff">训练 BF16</text>
+  <rect x="35" y="240" width="160" height="36" rx="6" fill="#3b82f6"/>
+  <text x="115" y="263" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#fff">ckpt_bf16</text>
+  <rect x="35" y="290" width="160" height="36" rx="6" fill="#60a5fa"/>
+  <text x="115" y="313" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#1e3a8a">推理 BF16</text>
+  <text x="115" y="370" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="11" fill="#374151">质量/吞吐基准</text>
+
+  <!-- R2 -->
+  <rect x="225" y="140" width="190" height="340" rx="12" fill="#fffbeb" stroke="#d97706" stroke-width="2"/>
+  <text x="320" y="168" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="15" font-weight="700" fill="#b45309">R2</text>
+  <rect x="240" y="190" width="160" height="36" rx="6" fill="#d97706"/>
+  <text x="320" y="213" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#fff">不另训（=R1）</text>
+  <rect x="240" y="240" width="160" height="36" rx="6" fill="#f59e0b"/>
+  <text x="320" y="263" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#fff">ckpt_bf16</text>
+  <rect x="240" y="290" width="160" height="36" rx="6" fill="#fbbf24"/>
+  <text x="320" y="313" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#78350f">推理 TE NVFP4</text>
+  <text x="320" y="370" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="11" fill="#374151">仅推理低精度</text>
+
+  <!-- R3 -->
+  <rect x="430" y="140" width="190" height="340" rx="12" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+  <text x="525" y="168" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="15" font-weight="700" fill="#047857">R3</text>
+  <rect x="445" y="190" width="160" height="36" rx="6" fill="#059669"/>
+  <text x="525" y="213" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#fff">训练 TE NVFP4</text>
+  <rect x="445" y="240" width="160" height="36" rx="6" fill="#10b981"/>
+  <text x="525" y="263" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#fff">ckpt_nvfp4</text>
+  <rect x="445" y="290" width="160" height="36" rx="6" fill="#34d399"/>
+  <text x="525" y="313" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#064e3b">推理 TE NVFP4</text>
+  <text x="525" y="370" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="11" fill="#374151">训推一致 NVFP4</text>
+
+  <!-- R4 -->
+  <rect x="635" y="140" width="190" height="340" rx="12" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="730" y="168" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="15" font-weight="700" fill="#6d28d9">R4</text>
+  <rect x="650" y="190" width="160" height="36" rx="6" fill="#7c3aed"/>
+  <text x="730" y="213" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#fff">不另训（=R1）</text>
+  <rect x="650" y="240" width="160" height="36" rx="6" fill="#8b5cf6"/>
+  <text x="730" y="263" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#fff">ckpt_bf16</text>
+  <rect x="650" y="290" width="160" height="36" rx="6" fill="#a78bfa"/>
+  <text x="730" y="313" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#4c1d95">推理 TE MXFP8</text>
+  <text x="730" y="370" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="11" fill="#374151">仅推理 MXFP8</text>
+
+  <!-- R5 -->
+  <rect x="840" y="140" width="180" height="340" rx="12" fill="#fdf2f8" stroke="#db2777" stroke-width="2"/>
+  <text x="930" y="168" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="15" font-weight="700" fill="#be185d">R5</text>
+  <rect x="855" y="190" width="150" height="36" rx="6" fill="#db2777"/>
+  <text x="930" y="213" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#fff">训练 TE MXFP8</text>
+  <rect x="855" y="240" width="150" height="36" rx="6" fill="#ec4899"/>
+  <text x="930" y="263" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#fff">ckpt_mxfp8</text>
+  <rect x="855" y="290" width="150" height="36" rx="6" fill="#f472b6"/>
+  <text x="930" y="313" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" fill="#831843">推理 TE MXFP8</text>
+  <text x="930" y="370" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="11" fill="#374151">训推一致 MXFP8</text>
+
+  <path d="M520 108 L115 140" stroke="#9ca3af" stroke-width="1.2" fill="none" stroke-dasharray="4 3"/>
+  <path d="M520 108 L320 140" stroke="#9ca3af" stroke-width="1.2" fill="none" stroke-dasharray="4 3"/>
+  <path d="M520 108 L525 140" stroke="#9ca3af" stroke-width="1.2" fill="none" stroke-dasharray="4 3"/>
+  <path d="M520 108 L730 140" stroke="#9ca3af" stroke-width="1.2" fill="none" stroke-dasharray="4 3"/>
+  <path d="M520 108 L930 140" stroke="#9ca3af" stroke-width="1.2" fill="none" stroke-dasharray="4 3"/>
+</svg>
