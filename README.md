@@ -20,16 +20,29 @@ Eval: WikiText-2 **PPL** (English) + throughput + generation samples.
 
 **中文技术报告：** [`docs/TECHNICAL_REPORT_zh.md`](docs/TECHNICAL_REPORT_zh.md)（SVG 配图见 `docs/figures/`）。  
 **结果摘要：** [`EXPERIMENT_SUMMARY.md`](EXPERIMENT_SUMMARY.md) · [`RUN_STATUS.md`](RUN_STATUS.md)。  
-**当前：** mix73 + 26.07 全量 R1–R5 **重跑中**（旧纯英 26.06 结果在 `*_legacy_en_2606_*`）。
+**当前：** seed **42** · mix73 + 26.07 · R1–R5 **已完成**（PPL + bench + report）。旧纯英 26.06 结果在 `*_legacy_en_2606_*`。
+
+### Seed 42 · WikiText-2 PPL（mix73）
+
+| Route | Train | Infer | PPL |
+|-------|-------|-------|-----|
+| R1 | BF16 | BF16 | **43.12** |
+| R2 | BF16 | TE NVFP4 | **45.88** |
+| R3 | TE NVFP4 | TE NVFP4 | **43.98** |
+| R4 | BF16 | TE MXFP8 | **43.19** |
+| R5 | TE MXFP8 | TE MXFP8 | **44.00** |
+
+详情与吞吐：[`EXPERIMENT_SUMMARY.md`](EXPERIMENT_SUMMARY.md) · `results/main_360m/seed_42/`。
 
 ---
 
 ## 生成样例（seed=42，完整输入 / 输出 + 中文翻译）
 
-模型约 360M、英文 FineWeb 从零训练约 7B tokens，**不是**产品级模型。  
-英文为模型原样输出；**中文为人工翻译**（不是中文续写）。  
-采样：`temperature=0.8`，`top_p=0.9`，`max_new_tokens=64`，`gen_seed=0`。  
-复现：`SEED=42 LANG=en bash scripts/run_generate_samples.sh`。
+> 下列生成样例来自**较早纯英文训练栈**的 R1–R3 权重，用于定性观感；**不要**与上表 mix73 PPL 直接对应。  
+> 模型约 360M、从零 ~7B tokens，**不是**产品级模型。  
+> 英文为模型原样输出；**中文为人工翻译**（不是中文续写）。  
+> 采样：`temperature=0.8`，`top_p=0.9`，`max_new_tokens=64`，`gen_seed=0`。  
+> 复现：`SEED=42 LANG=en bash scripts/run_generate_samples.sh`。
 
 ### 例 1
 
@@ -111,7 +124,7 @@ Configs: `configs/smoke_135m.yaml`, `configs/main_360m.yaml`, `configs/bench_360
 
 ```
 configs/   mxfp4_lib/   docs/   scripts/
-checkpoints/seed_<N>/{init_model,ckpt_bf16,ckpt_nvfp4}/
+checkpoints/seed_<N>/{init_model,ckpt_bf16,ckpt_nvfp4,ckpt_mxfp8}/
 ```
 
 ## Remote

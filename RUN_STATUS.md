@@ -15,27 +15,66 @@
 | R4 | same BF16 | TE MXFP8 | `ckpt_bf16` |
 | R5 | TE MXFP8 | TE MXFP8 | `ckpt_mxfp8` |
 
-## Ops
-
-- Checkpoint durability: `save_every=500`, atomic `.tmp`→rename, SIGTERM/SIGINT save  
-- Resume: `scripts/run_resume_r123.sh` (safe; no `seed_*` rename)  
-- Recipe selection: `get_recipe("nvfp4"|"mxfp8")` (explicit; not auto-prefer)  
-- Legacy pure-English 26.06 runs backed up as `*_legacy_en_2606_*`  
-
-
-**Active host (session):** moved to new GPU node for machine reclaim; resume via NFS `save_every` / re-prefetch mix73 if data incomplete.
-
-## Seed 42 / 43 (mix73 + 26.07) — IN PROGRESS
+## Seed 42 (mix73 + 26.07) — **DONE**
 
 | Stage | Status |
 |-------|--------|
-| Backup old EN-only ckpts/results | Done |
-| Pull `pytorch:26.07-py3` | In progress / done on GPU node |
-| Prefetch mix73 train cache | Pending / running |
-| BF16 + NVFP4 + MXFP8 train | Pending after data |
-| PPL R1–R5 + benches | Pending |
+| Prefetch mix73 train cache | Done (`train_tok7000000000_mix73_enzh_seed42.npy`) |
+| BF16 / NVFP4 / MXFP8 train (4× GPU DDP) | Done (`checkpoints/seed_42/ckpt_{bf16,nvfp4,mxfp8}/`) |
+| WikiText-2 PPL R1–R5 | Done (`results/main_360m/seed_42/metrics.json`) |
+| Throughput benches | Done (`results/perf/bench_*_seed42_best.json`) |
+| Full report | Done (`results/main_360m/seed_42/full_report.md`) |
 
-Logs: `logs/resume_r123_seed42_*.log` / `logs/full_r15_launcher_seed42_*.out`
+### WikiText-2 PPL (seed 42)
 
-> Absolute PPL **not** comparable to pure-English 26.06 runs (data mix changed).  
+| Route | Train | Infer | PPL | vs R1 |
+|-------|-------|-------|-----|------:|
+| R1 | BF16 | BF16 | **43.12** | 1.00× |
+| R2 | BF16 | TE NVFP4 | **45.88** | 1.06× |
+| R3 | TE NVFP4 | TE NVFP4 | **43.98** | 1.02× |
+| R4 | BF16 | TE MXFP8 | **43.19** | 1.00× |
+| R5 | TE MXFP8 | TE MXFP8 | **44.00** | 1.02× |
+
+### Train loss (final / best val)
+
+| Backend | final train loss | best val_loss |
+|---------|-----------------:|-------------:|
+| BF16 | 2.660 | 2.665 |
+| NVFP4 | 2.685 | 2.721 |
+| MXFP8 | 2.634 | 2.671 |
+
+### Throughput (best microbench, seed 42, GB200)
+
+| Route | Phase | nGPU | bs/gpu | tokens/s |
+|-------|-------|-----:|-------:|---------:|
+| R1 BF16 | train | 1 | 192 | 173k |
+| R1 BF16 | train | 4 | 192 | **685k** |
+| R1 BF16 | infer | 1 | 192 | 527k |
+| R2 NVFP4 | infer | 1 | 192 | 439k |
+| R3 NVFP4 | train | 1 | 192 | 159k |
+| R3 NVFP4 | train | 4 | 160 | 622k |
+| R3 NVFP4 | infer | 1 | 192 | 439k |
+| R4 MXFP8 | infer | 1 | 192 | 502k |
+| R5 MXFP8 | train | 1 | 192 | 173k |
+| R5 MXFP8 | train | 4 | 192 | **685k** |
+| R5 MXFP8 | infer | 1 | 192 | 502k |
+
+Steady jsonl (4 GPU, from train logs): BF16 ~580k · NVFP4 ~439k · MXFP8 ~515k tok/s.
+
+## Seed 43 (mix73 + 26.07)
+
+| Stage | Status |
+|-------|--------|
+| Full R1–R5 on mix73 | **Not started** |
+
+## Ops notes
+
+- Checkpoint durability: `save_every=500`, atomic `.tmp`→rename, SIGTERM/SIGINT save  
+- Resume: `scripts/run_resume_r123.sh` (safe; no `seed_*` rename)  
+- Eval-only after train: `SKIP_TRAIN=1 bash scripts/run_resume_r123.sh`  
+- TE PPL pad: NVFP4 `S%16==0`, MXFP8 `S%32==0` (`scripts/05_eval_ppl.py`)  
+- FineWeb-2 ZH config is **`cmn_Hani`** (not BCP-47 `zho_Hans`)  
+- Legacy pure-English 26.06 runs: `*_legacy_en_2606_*`  
+
+> Absolute PPL is **not** comparable to pure-English 26.06 runs (data mix changed).  
 > Compare **R1–R5 relative** under the same mix73 + 26.07 stack.
