@@ -21,36 +21,35 @@ Scope：block Linear；`embed` + `lm_head` 高精度。
 
 > **注意：** 与历史「纯英文 + 26.06」结果的绝对 PPL **不可直接对比**；本栈内比较 R1–R5。
 
-## 2. 质量（WikiText-2 PPL）— 主线 seed 42 · mix73 · 26.07
+## 2. 质量（WikiText-2 PPL）— mix73 · 26.07
 
-| 路线 | Train | Infer | PPL | vs R1 |
-|------|-------|-------|-----|------:|
-| R1 | BF16 | BF16 | **43.12** | 1.00× |
-| R2 | BF16 | TE NVFP4 | **45.88** | 1.06× |
-| R3 | TE NVFP4 | TE NVFP4 | **43.98** | 1.02× |
-| R4 | BF16 | TE MXFP8 | **43.19** | 1.00× |
-| R5 | TE MXFP8 | TE MXFP8 | **44.00** | 1.02× |
+### 2.1 双 seed 对照
 
-报告：`results/main_360m/seed_42/metrics.json` · `full_report.md`
+| 路线 | Train | Infer | seed42 | seed43 | mean | mean vs R1 |
+|------|-------|-------|-------:|-------:|-----:|-----------:|
+| R1 | BF16 | BF16 | **43.12** | **42.14** | **42.63** | 1.00× |
+| R2 | BF16 | TE NVFP4 | **45.88** | **45.61** | **45.75** | 1.07× |
+| R3 | TE NVFP4 | TE NVFP4 | **43.98** | **45.50** | **44.74** | 1.05× |
+| R4 | BF16 | TE MXFP8 | **43.19** | **42.12** | **42.66** | 1.00× |
+| R5 | TE MXFP8 | TE MXFP8 | **44.00** | **42.81** | **43.41** | 1.02× |
 
-### 训练 loss（~7B tokens 后）
+报告：`results/main_360m/seed_{42,43}/metrics.json` · `full_report.md`
 
-| Backend | final train loss | best val_loss |
-|---------|-----------------:|-------------:|
-| BF16 | 2.660 | 2.665 |
-| NVFP4 | 2.685 | 2.721 |
-| MXFP8 | 2.634 | 2.671 |
+### 2.2 训练 loss（~7B tokens 后）
 
-### 解读（seed 42 · mix73）
+| Backend | seed42 final / best val | seed43 final / best val |
+|---------|------------------------:|------------------------:|
+| BF16 | 2.660 / 2.665 | 2.624 / 2.675 |
+| NVFP4 | 2.685 / 2.721 | 2.667 / 2.726 |
+| MXFP8 | 2.634 / 2.671 | 2.599 / 2.679 |
 
-- **R4（BF16 权 + MXFP8 推）** 几乎贴齐 R1（+0.2% PPL），是「推理解耦低精度」里最稳的。  
-- **R2（BF16 权 + NVFP4 推）** 质量最差（+6.4% vs R1），与「只在推理时用 NVFP4」的预期一致。  
-- **R3 / R5** 低精度训练后 PPL 约 +2% vs R1；R3 略好于 R2，R5 略差于 R4。  
-- 训练 loss：MXFP8 训终损最低（2.63），但 WikiText-2 英语 PPL 仍以 R1/R4 略优——语料 30% 中文，英语 eval 与 train loss 不完全对齐。
+### 2.3 解读
 
-### Seed 43（mix73）
-
-尚未在本栈重跑。
+- **R4（BF16 权 + MXFP8 推）** 在两个 seed 上都几乎贴齐 R1（相对差 ≤0.2%），是「推理解耦低精度」里最稳的。  
+- **R2（BF16 权 + NVFP4 推）** 质量最差一侧（mean +7% vs R1），与「只在推理时用 NVFP4」的预期一致。  
+- **R3** 对 seed 更敏感：seed42 仅 +2% vs R1，seed43 约 +8% 且接近 R2——NVFP4 从零训练的质量增益**不总是**稳定超过 PTQ 式 R2。  
+- **R5** 相对 R1 约 +2%（双 seed 一致量级）；seed43 上 R5 更接近 R1。  
+- 训练 loss：MXFP8 终损在两 seed 上均最低，但英语 WikiText-2 PPL 仍以 R1/R4 略优——语料 30% 中文，eval 与 train loss 不完全对齐。
 
 ### 附录：历史纯英文 + 26.06（不可与上表绝对对比）
 
@@ -59,9 +58,9 @@ Scope：block Linear；`embed` + `lm_head` 高精度。
 | 42 (EN-only) | 51.95 | 54.07 | 53.32 | 旧栈；已归档 `*_legacy_en_2606_*` |
 | 43 (EN-only) | 37.07 | 40.08 | 39.62 | 同上 |
 
-## 3. 性能（tokens/s）— seed 42 · GB200 · 26.07 · trained ckpts
+## 3. 性能（tokens/s）— GB200 · 26.07 · trained ckpts
 
-### 3.1 Microbench best
+### 3.1 Microbench best（seed 42；seed 43 几乎相同）
 
 | Route / path | Phase | nGPU | bs | tokens/s | vs R1 train/infer |
 |--------------|-------|-----:|---:|---------:|------------------:|
@@ -77,13 +76,15 @@ Scope：block Linear；`embed` + `lm_head` 高精度。
 | R3 te_nvfp4 | train | 4 | 160 | **622077** | 0.91× |
 | R5 te_mxfp8 | train | 4 | 192 | **685374** | 1.00× |
 
+seed 43 对应 best 与上表偏差通常 **&lt;1%**（见 `results/perf/bench_*_seed43_best.json`）。
+
 ### 3.2 实训稳态（jsonl 4GPU 平均）
 
-| Backend | steady tok/s |
-|---------|-------------:|
-| BF16 | ~580k |
-| NVFP4 | ~439k |
-| MXFP8 | ~515k |
+| Backend | seed42 | seed43 |
+|---------|-------:|-------:|
+| BF16 | ~580k | ~579k |
+| NVFP4 | ~439k | ~464k |
+| MXFP8 | ~515k | ~506k |
 
 **吞吐结论（本规模）：**
 
@@ -99,3 +100,4 @@ Scope：block Linear；`embed` + `lm_head` 高精度。
 - TE 评测 pad：NVFP4 序列长对齐 16，MXFP8 对齐 32（`05_eval_ppl.py`）  
 - `data/`、`checkpoints/`、`results/`、`logs/`、`snapshots/` 不入 git  
 - 断点：`checkpoints/seed_<N>/ckpt_*/resume/`；`SEED=N bash scripts/run_resume_r123.sh`  
+- `write_full_report.py` 只汇总当前 seed 的 bench 文件，避免混入其它 seed 产物  

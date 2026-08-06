@@ -61,11 +61,51 @@
 
 Steady jsonl (4 GPU, from train logs): BF16 ~580k · NVFP4 ~439k · MXFP8 ~515k tok/s.
 
-## Seed 43 (mix73 + 26.07)
+## Seed 43 (mix73 + 26.07) — **DONE**
 
 | Stage | Status |
 |-------|--------|
-| Full R1–R5 on mix73 | **Not started** |
+| Prefetch mix73 train cache | Done (`train_tok7000000000_mix73_enzh_seed43.npy`) |
+| BF16 / NVFP4 / MXFP8 train (4× GPU DDP) | Done (`checkpoints/seed_43/ckpt_{bf16,nvfp4,mxfp8}/`) |
+| WikiText-2 PPL R1–R5 | Done (`results/main_360m/seed_43/metrics.json`) |
+| Throughput benches | Done (`results/perf/bench_*_seed43_best.json`) |
+| Full report | Done (`results/main_360m/seed_43/full_report.md`) |
+
+### WikiText-2 PPL (seed 43)
+
+| Route | Train | Infer | PPL | vs R1 |
+|-------|-------|-------|-----|------:|
+| R1 | BF16 | BF16 | **42.14** | 1.00× |
+| R2 | BF16 | TE NVFP4 | **45.61** | 1.08× |
+| R3 | TE NVFP4 | TE NVFP4 | **45.50** | 1.08× |
+| R4 | BF16 | TE MXFP8 | **42.12** | 1.00× |
+| R5 | TE MXFP8 | TE MXFP8 | **42.81** | 1.02× |
+
+### Train loss (final / best val)
+
+| Backend | final train loss | best val_loss |
+|---------|-----------------:|-------------:|
+| BF16 | 2.624 | 2.675 |
+| NVFP4 | 2.667 | 2.726 |
+| MXFP8 | 2.599 | 2.679 |
+
+### Throughput (best microbench, seed 43, GB200)
+
+| Route | Phase | nGPU | bs/gpu | tokens/s |
+|-------|-------|-----:|-------:|---------:|
+| R1 BF16 | train | 1 | 192 | 173k |
+| R1 BF16 | train | 4 | 192 | **686k** |
+| R1 BF16 | infer | 1 | 192 | 526k |
+| R2 NVFP4 | infer | 1 | 192 | 439k |
+| R3 NVFP4 | train | 1 | 192 | 159k |
+| R3 NVFP4 | train | 4 | 160 | 621k |
+| R3 NVFP4 | infer | 1 | 192 | 439k |
+| R4 MXFP8 | infer | 1 | 192 | 501k |
+| R5 MXFP8 | train | 1 | 192 | 173k |
+| R5 MXFP8 | train | 4 | 192 | **685k** |
+| R5 MXFP8 | infer | 1 | 192 | 502k |
+
+Steady jsonl (4 GPU): BF16 ~579k · NVFP4 ~464k · MXFP8 ~506k tok/s.
 
 ## Ops notes
 
@@ -75,6 +115,8 @@ Steady jsonl (4 GPU, from train logs): BF16 ~580k · NVFP4 ~439k · MXFP8 ~515k 
 - TE PPL pad: NVFP4 `S%16==0`, MXFP8 `S%32==0` (`scripts/05_eval_ppl.py`)  
 - FineWeb-2 ZH config is **`cmn_Hani`** (not BCP-47 `zho_Hans`)  
 - Legacy pure-English 26.06 runs: `*_legacy_en_2606_*`  
+- Reports filter benches by `seed${SEED}` (`scripts/write_full_report.py`)
 
 > Absolute PPL is **not** comparable to pure-English 26.06 runs (data mix changed).  
-> Compare **R1–R5 relative** under the same mix73 + 26.07 stack.
+> Compare **R1–R5 relative** under the same mix73 + 26.07 stack.  
+> Across seeds: R4≈R1 is stable; R3 shows larger seed variance than R1/R4/R5.

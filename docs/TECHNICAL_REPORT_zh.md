@@ -3,7 +3,7 @@
 **面向读者：** 具备基础深度学习与 Python 经验，**不要求**事先了解 FP8/FP4 或 Transformer Engine。  
 **实验代码：** 仓库 `mxfp4_route_compare`  
 **环境：** `nvcr.io/nvidia/pytorch:26.07-py3` · 4×NVIDIA GB200  
-**主线配置：** SmolLM2-360M 架构 · EN/ZH **7:3** 混合语料 ~7B tokens（FineWeb-Edu + FineWeb-2 `cmn_Hani`）· **seed 42 已完成**（seed 43 mix73 未跑）
+**主线配置：** SmolLM2-360M 架构 · EN/ZH **7:3** 混合语料 ~7B tokens（FineWeb-Edu + FineWeb-2 `cmn_Hani`）· **seed 42 与 seed 43 均已完成**
 
 ---
 
@@ -27,19 +27,19 @@
 **质量指标：** WikiText-2 困惑度（PPL，越低越好；**英语** eval）。  
 **性能指标：** 训练/推理 tokens/s（microbench + 实训稳态）。
 
-**主线结论（seed 42 · mix73 · 26.07）：**
+**主线结论（seed 42 + 43 · mix73 · 26.07）：**
 
-| 路线 | PPL | vs R1 |
-|------|-----|------:|
-| R1 BF16 | **43.12** | 1.00× |
-| R2 BF16→NVFP4 | **45.88** | 1.06× |
-| R3 NVFP4 训推 | **43.98** | 1.02× |
-| R4 BF16→MXFP8 | **43.19** | 1.00× |
-| R5 MXFP8 训推 | **44.00** | 1.02× |
+| 路线 | seed42 | seed43 | mean | mean vs R1 |
+|------|-------:|-------:|-----:|-----------:|
+| R1 BF16 | **43.12** | **42.14** | **42.63** | 1.00× |
+| R2 BF16→NVFP4 | **45.88** | **45.61** | **45.75** | 1.07× |
+| R3 NVFP4 训推 | **43.98** | **45.50** | **44.74** | 1.05× |
+| R4 BF16→MXFP8 | **43.19** | **42.12** | **42.66** | 1.00× |
+| R5 MXFP8 训推 | **44.00** | **42.81** | **43.41** | 1.02× |
 
-1. **R4 几乎贴齐 R1**（BF16 训练 + MXFP8 推理，质量损失可忽略）。  
-2. **R2 最差**（BF16 权 + NVFP4 推）；**R3 明显好于 R2**（NVFP4 训练有帮助）。  
-3. R5 相对 R1 约 +2% PPL；4 卡 microbench 上 **MXFP8 训练吞吐与 BF16 基本持平**，NVFP4 约 **0.90–0.92×**。  
+1. **R4 几乎贴齐 R1**（两 seed 均成立；BF16 训练 + MXFP8 推理质量损失可忽略）。  
+2. **R2 始终最差一侧**；**R3 的收益有 seed 方差**：seed42 明显好于 R2，seed43 与 R2 接近。  
+3. R5 相对 R1 约 +2% PPL（双 seed 量级一致）；4 卡 microbench 上 **MXFP8 训练吞吐与 BF16 基本持平**，NVFP4 约 **0.90–0.92×**。  
 4. 历史「纯英文 + 26.06」的**绝对 PPL 不可**与本表对比（数据分布变了）；详见附录 E 与 [`EXPERIMENT_SUMMARY.md`](../EXPERIMENT_SUMMARY.md)。
 
 ### 生成样例速览（比 PPL 更直观）
@@ -359,35 +359,39 @@ PPL 越低，说明模型越能预测下一个 token。
 
 ## 8. 实验结果
 
-### 8.1 质量（WikiText-2 PPL）— 主线 seed 42 · mix73
+### 8.1 质量（WikiText-2 PPL）— 主线 seed 42 / 43 · mix73
 
-| 路线 | Train | Infer | PPL | 相对 R1 |
-|------|-------|-------|-----|--------:|
-| R1 | BF16 | BF16 | **43.12** | 1.00× |
-| R2 | BF16 | TE NVFP4 | **45.88** | 1.06× |
-| R3 | TE NVFP4 | TE NVFP4 | **43.98** | 1.02× |
-| R4 | BF16 | TE MXFP8 | **43.19** | 1.00× |
-| R5 | TE MXFP8 | TE MXFP8 | **44.00** | 1.02× |
+| 路线 | Train | Infer | seed42 | seed43 | mean | mean vs R1 |
+|------|-------|-------|-------:|-------:|-----:|-----------:|
+| R1 | BF16 | BF16 | **43.12** | **42.14** | **42.63** | 1.00× |
+| R2 | BF16 | TE NVFP4 | **45.88** | **45.61** | **45.75** | 1.07× |
+| R3 | TE NVFP4 | TE NVFP4 | **43.98** | **45.50** | **44.74** | 1.05× |
+| R4 | BF16 | TE MXFP8 | **43.19** | **42.12** | **42.66** | 1.00× |
+| R5 | TE MXFP8 | TE MXFP8 | **44.00** | **42.81** | **43.41** | 1.02× |
 
-数据：`results/main_360m/seed_42/metrics.json`。
+数据：`results/main_360m/seed_{42,43}/metrics.json`。
 
 ![PPL seed42 mix73](figures/fig06_ppl_seed42.svg)
 
+![PPL seed43 mix73](figures/fig06_ppl_seed43.svg)
+
+![PPL mean seed42+43](figures/fig06_ppl_mean42_43.svg)
+
 **如何读这些数？**
 
-1. **R4 ≈ R1：** 在 BF16 权重上做 MXFP8 推理，英语 PPL 几乎不掉——「推理解耦」里最稳的一条。  
-2. **R2 最差，R3 明显好于 R2：** 与「训练就见过 NVFP4」的预期一致。  
-3. **R5 略差于 R1/R4：** 全流程 MXFP8 训练有约 +2% 相对代价。  
+1. **R4 ≈ R1（两 seed 稳定）：** BF16 权重上做 MXFP8 推理，英语 PPL 几乎不掉——「推理解耦」里最稳的一条。  
+2. **R2 始终最差一侧；R3 有 seed 方差：** seed42 上 R3 明显好于 R2，seed43 上 R3≈R2——不能单 seed 断言「NVFP4 训练必显著优于 PTQ」。  
+3. **R5 略差于 R1/R4：** 全流程 MXFP8 训练约 +2% 相对代价（双 seed 量级一致）。  
 4. **绝对 PPL 仍高：** 360M + 7B 从零预训练，远未到「可用聊天模型」；比较路线看**相对差**更有意义。  
-5. **训练 loss 与英语 PPL 不完全同序：** 例如 MXFP8 终损可低于 BF16，但 WikiText-2（英语）上 R1/R4 仍略优——与 30% 中文训练分布有关。
+5. **训练 loss 与英语 PPL 不完全同序：** MXFP8 终损可低于 BF16，但 WikiText-2（英语）上 R1/R4 仍略优——与 30% 中文训练分布有关。
 
 #### 训练 loss（约 7B tokens 后）
 
-| Backend | final train loss | best val_loss |
-|---------|-----------------:|-------------:|
-| BF16 | 2.660 | 2.665 |
-| NVFP4 | 2.685 | 2.721 |
-| MXFP8 | 2.634 | 2.671 |
+| Backend | seed42 final / best val | seed43 final / best val |
+|---------|------------------------:|------------------------:|
+| BF16 | 2.660 / 2.665 | 2.624 / 2.675 |
+| NVFP4 | 2.685 / 2.721 | 2.667 / 2.726 |
+| MXFP8 | 2.634 / 2.671 | 2.599 / 2.679 |
 
 ### 8.2 吞吐（seed 42 · mix73 · microbench best）
 
@@ -405,7 +409,11 @@ PPL 越低，说明模型越能预测下一个 token。
 | R3 train | 4 | 160 | 622077 | 0.91× |
 | R5 train | 4 | 192 | **685374** | ~1.00× |
 
-实训稳态（4 卡 jsonl 平均，见 `full_report.md`）：BF16 ~**580k** · NVFP4 ~**439k** · MXFP8 ~**515k** tok/s。
+实训稳态（4 卡 jsonl 平均，见 `full_report.md`）：  
+- seed42：BF16 ~**580k** · NVFP4 ~**439k** · MXFP8 ~**515k** tok/s  
+- seed43：BF16 ~**579k** · NVFP4 ~**464k** · MXFP8 ~**506k** tok/s  
+
+seed43 microbench 与 seed42 偏差通常 &lt;1%（算子路径为主，权重 seed 影响小）。
 
 ![吞吐](figures/fig07_throughput.svg)
 
@@ -491,15 +499,15 @@ data/fineweb_edu/train_tok7000000000_mix73_enzh_seed<N>.npy
 ### 10.1 结论
 
 1. 建立了可复现的 **R1–R5** 对比流水线（BF16 / TE NVFP4 / TE MXFP8，硬件路径）。  
-2. **质量（英语 WikiText-2）：** R4≈R1；R3 优于 R2；R5 有约 +2% 相对代价。  
-3. **速度：** 本 360M 设置下 NVFP4 训练/推理略慢于 BF16；MXFP8 更接近持平（4 卡 train best 几乎相同）。  
+2. **质量（英语 WikiText-2，seed 42+43）：** R4≈R1 稳定；R2 最差一侧；R3 相对 R2 的优势有 seed 方差；R5 约 +2% vs R1。  
+3. **速度：** 本 360M 设置下 NVFP4 训练/推理略慢于 BF16；MXFP8 更接近持平（4 卡 train best 几乎相同）；seed 间吞吐几乎不变。  
 4. **数据：** mix73 使训练分布含中文，但主指标仍是英语 PPL；中文生成可读性有限。  
-5. **工程：** 断点续训、显式 recipe、TE 替换/还原、pad 对齐已沉淀在脚本与文档中。
+5. **工程：** 断点续训、显式 recipe、TE 替换/还原、pad 对齐、按 seed 过滤 bench 报告已沉淀在脚本与文档中。
 
 ### 10.2 局限
 
 - 模型小、预算有限，**绝对 PPL 高**，不代表大模型生产指标。  
-- seed 43 的 mix73 全流程 **尚未**重跑。  
+- 仅两个 from-scratch seed；R3 的 seed 方差说明还需要更多 seed 才能收紧置信区间。  
 - 未覆盖长上下文、多机、系统级服务延迟。  
 - 未做「真正的低比特权重部署格式」端到端服务对比。  
 - 中文能力未用中文 benchmark 系统评估。
@@ -556,8 +564,10 @@ data/fineweb_edu/train_tok7000000000_mix73_enzh_seed<N>.npy
 | `fig08_smollm2_360m_arch.svg` | SmolLM2-360M 结构 |
 | `fig04_pipeline.svg` | 流水线（含 MXFP8 训） |
 | `fig05_te_forward.svg` | TE 前向概念 |
-| `fig06_ppl_seed42.svg` | **mix73 五路 PPL** |
-| `fig07_throughput.svg` | **mix73 吞吐** |
+| `fig06_ppl_seed42.svg` | mix73 五路 PPL（seed42） |
+| `fig06_ppl_seed43.svg` | mix73 五路 PPL（seed43） |
+| `fig06_ppl_mean42_43.svg` | mix73 五路 PPL（两 seed 均值） |
+| `fig07_throughput.svg` | **mix73 吞吐**（seed42 microbench） |
 | `plot_results.py` | 由 metrics/bench JSON 再生结果图 |
 
 ```bash

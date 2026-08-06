@@ -20,19 +20,19 @@ Eval: WikiText-2 **PPL** (English) + throughput + generation samples.
 
 **中文技术报告：** [`docs/TECHNICAL_REPORT_zh.md`](docs/TECHNICAL_REPORT_zh.md)（SVG 配图见 `docs/figures/`）。  
 **结果摘要：** [`EXPERIMENT_SUMMARY.md`](EXPERIMENT_SUMMARY.md) · [`RUN_STATUS.md`](RUN_STATUS.md)。  
-**当前：** seed **42** · mix73 + 26.07 · R1–R5 **已完成**（PPL + bench + report）。旧纯英 26.06 结果在 `*_legacy_en_2606_*`。
+**当前：** seed **42** 与 **43** · mix73 + 26.07 · R1–R5 **均已完成**（PPL + bench + report）。旧纯英 26.06 结果在 `*_legacy_en_2606_*`。
 
-### Seed 42 · WikiText-2 PPL（mix73）
+### WikiText-2 PPL（mix73 · 26.07）
 
-| Route | Train | Infer | PPL |
-|-------|-------|-------|-----|
-| R1 | BF16 | BF16 | **43.12** |
-| R2 | BF16 | TE NVFP4 | **45.88** |
-| R3 | TE NVFP4 | TE NVFP4 | **43.98** |
-| R4 | BF16 | TE MXFP8 | **43.19** |
-| R5 | TE MXFP8 | TE MXFP8 | **44.00** |
+| Route | Train | Infer | seed42 | seed43 | mean |
+|-------|-------|-------|-------:|-------:|-----:|
+| R1 | BF16 | BF16 | **43.12** | **42.14** | 42.63 |
+| R2 | BF16 | TE NVFP4 | **45.88** | **45.61** | 45.75 |
+| R3 | TE NVFP4 | TE NVFP4 | **43.98** | **45.50** | 44.74 |
+| R4 | BF16 | TE MXFP8 | **43.19** | **42.12** | 42.66 |
+| R5 | TE MXFP8 | TE MXFP8 | **44.00** | **42.81** | 43.41 |
 
-详情与吞吐：[`EXPERIMENT_SUMMARY.md`](EXPERIMENT_SUMMARY.md) · `results/main_360m/seed_42/`。
+详情与吞吐：[`EXPERIMENT_SUMMARY.md`](EXPERIMENT_SUMMARY.md) · `results/main_360m/seed_{42,43}/`。
 
 ---
 
